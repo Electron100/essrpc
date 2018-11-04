@@ -1,0 +1,6 @@
+Not supported
+-ABI info (extern C)
+-unsafe functions
+-const functions
+-variadic functions
+-generic functions

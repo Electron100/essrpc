@@ -26,9 +26,7 @@ pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
     // Look at each method
     for item in ast_trait.items {
         if let TraitItem::Method(m) = item {
-            // Create a param struct
-            result.extend(create_param_struct(&trait_name, &m.sig));
-            methods.push(m.sig.clone());
+             methods.push(m.sig.clone());
         }
     }
 
@@ -39,22 +37,6 @@ pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
 
 fn params_ident(trait_name: &Ident, sig: &MethodSig) -> Ident {
     Ident::new(&format!("{}_{}_RPCParams", trait_name, sig.ident), Span::call_site())
-}
-
-fn create_param_struct(trait_name: &Ident, sig: &MethodSig) -> TokenStream {
-    let struct_ident = params_ident(trait_name, sig);
-    let mut field_tokens = TokenStream2::new();
-    for p in sig.decl.inputs.iter() {
-        if let FnArg::Captured(arg) = p {
-            let name = &arg.pat;
-            let ty = &arg.ty;
-            field_tokens.extend(quote!(#name: #ty,));
-        }
-    }
-    
-    quote!(struct #struct_ident {
-        #field_tokens
-    }).into()
 }
 
 fn impl_client_method(method: &MethodSig) -> TokenStream2 {

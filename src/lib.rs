@@ -1,12 +1,14 @@
 extern crate failure;
 extern crate serde;
 extern crate serde_json;
+extern crate uuid;
 
 use failure::Error;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 pub mod transforms;
+pub mod transports;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -30,15 +32,18 @@ pub trait Transform {
         T: Deserialize<'a>;
 }
 
-pub trait ClientTransport {
-    type Wire;
-    fn send<'a>(&self, data: Self::Wire) -> Result<Self::Wire>;
+pub trait RPCClient {
+    type TR: Transform;
+    type CTP: Transport;
+    fn new(transform: Self::TR, transport: Self::CTP) -> Self;
 }
 
-pub trait ServerTransport {
+pub trait Transport {
     type Wire;
-    fn receive<'a>(&self, data: Self::Wire) -> Result<()>;
+    fn send(&mut self, data: Self::Wire) -> Result<()>;
+    fn receive(&mut self) -> Result<Self::Wire>;
 }
+
 
 #[derive(Debug, Fail)]
 pub enum RPCError {

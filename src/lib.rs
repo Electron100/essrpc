@@ -30,6 +30,15 @@ pub trait Transform {
 
     fn from_wire<'a, T>(&self, data: &'a Self::Wire) -> Result<T> where
         T: Deserialize<'a>;
+
+    fn to_wire(&self, value: impl Serialize) -> Result<Self::Wire>;
+}
+
+
+pub trait Transport {
+    type Wire;
+    fn send(&mut self, data: Self::Wire) -> Result<()>;
+    fn receive(&mut self) -> Result<Self::Wire>;
 }
 
 pub trait RPCClient {
@@ -38,12 +47,9 @@ pub trait RPCClient {
     fn new(transform: Self::TR, transport: Self::CTP) -> Self;
 }
 
-pub trait Transport {
-    type Wire;
-    fn send(&mut self, data: Self::Wire) -> Result<()>;
-    fn receive(&mut self) -> Result<Self::Wire>;
+pub trait RPCServer {
+    fn handle_single_call(&mut self) -> Result<()>;
 }
-
 
 #[derive(Debug, Fail)]
 pub enum RPCError {

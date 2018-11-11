@@ -78,5 +78,8 @@ impl Transform for JSONTransform {
 
     }
 
+    fn to_wire(&self, value: impl Serialize) -> Result<Self::Wire> {
+        serde_json::to_vec(&value).map_err(Self::convert_error)
+    }
     
 }

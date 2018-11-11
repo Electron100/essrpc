@@ -1,5 +1,5 @@
 //The quote macro can require a high recursion limit
-#![recursion_limit="128"]
+#![recursion_limit="256"]
 
 extern crate proc_macro;
 extern crate proc_macro2;
@@ -10,7 +10,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Ident, Span};
 use quote::quote;
-use syn::{FnArg, ItemTrait, MethodSig, TraitItem, TraitItemMethod};
+use syn::{FnArg, ItemTrait, LitStr, Pat, TraitItem, TraitItemMethod};
 
 #[proc_macro_attribute]
 pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -33,21 +33,31 @@ pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     result.extend(create_client(&trait_ident, &methods));
+    result.extend(create_server(&trait_ident, &methods));
 
     result.into()
-}
-
-fn new_server_method() -> TokenStream2 {
-    TokenStream2::new()
-}
-
-fn params_ident(trait_ident: &Ident, sig: &MethodSig) -> Ident {
-    Ident::new(&format!("{}_{}_RPCParams", trait_ident, sig.ident), Span::call_site())
 }
 
 fn client_ident(trait_ident: &Ident) -> Ident {
     Ident::new(&format!("{}RPCClient", trait_ident), Span::call_site())
 }
+
+fn server_ident(trait_ident: &Ident) -> Ident {
+    Ident::new(&format!("{}RPCServer", trait_ident), Span::call_site())
+}
+
+fn make_pat_literal_str(pat: &Pat) -> LitStr {
+    match pat {
+        Pat::Ident(p) => make_ident_literal_str(&p.ident),
+        _ => panic!("Unhandled PAT type {:?}", pat)
+    }
+}
+
+fn make_ident_literal_str(ident: &Ident) -> LitStr {
+    let as_str = format!("{}", ident);
+    LitStr::new(&as_str, Span::call_site())
+}
+    
 
 fn impl_client_method(method: &TraitItemMethod) -> TokenStream2 {
     let ident = &method.sig.ident;
@@ -70,18 +80,24 @@ fn impl_client_method(method: &TraitItemMethod) -> TokenStream2 {
     for p in param_tokens.iter() {
         if let FnArg::Captured(arg) = p {
             let name = &arg.pat;
+            let name_literal = make_pat_literal_str(name);
             add_param_tokens.extend(
-                quote!(self.tr.tx_add_param("#name", #name, &mut state)?;));
+                quote!(self.tr.tx_add_param(#name_literal, #name, &mut state)?;));
         }
     }
     let rettype = &method.sig.decl.output;
+    let ident_literal = make_ident_literal_str(ident);
+
     quote!(
         fn #ident(#param_tokens) #rettype {
+            println!("Client method");
             let mut tx = self.tx.borrow_mut();
-            let mut state = self.tr.tx_begin("#ident")?;
+            let mut state = self.tr.tx_begin(#ident_literal)?;
             #add_param_tokens
             let data_in = self.tr.tx_finalize(&mut state)?;
+            println!("Client sending request");
             tx.send(data_in)?;
+            println!("Client reading request response");
             let data_result = tx.receive()?;
             self.tr.from_wire(&data_result)
         })
@@ -120,5 +136,94 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
             
             #method_impl_tokens
         }
+    )
+}
+
+fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStream2 {
+    let server_ident = server_ident(trait_ident);
+
+    let mut server_method_matches = TokenStream2::new();
+        
+    for method in methods {
+        server_method_matches.extend(create_server_match(method))
+    }
+    
+    quote!(
+        struct #server_ident<T, TR, TP> where
+            T: #trait_ident,
+            TR: essrpc::Transform,
+            TP: essrpc::Transport {
+            
+            tr: TR,
+            tx: std::cell::RefCell<TP>,
+            imp: T
+        }
+
+        impl <T, TR, TP> #server_ident<T, TR, TP> where
+            T: #trait_ident,
+            TR: essrpc::Transform,
+            TP: essrpc::Transport {
+
+            fn new(imp: T, transform: TR, transport: TP) -> Self {
+                #server_ident{tr: transform,
+                              tx: std::cell::RefCell::new(transport),
+                              imp: imp}
+            }
+            
+        }
+
+        impl <TR, TP, W, T> essrpc::RPCServer for #server_ident<T, TR, TP> where
+            TR: essrpc::Transform<Wire=W>,
+            TP: essrpc::Transport<Wire=W>,
+            T: #trait_ident
+        {
+            fn handle_single_call(&mut self) -> std::result::Result<(), failure::Error> {
+                let mut tx = self.tx.borrow_mut();
+                println!("Server trying to receive");
+                let callw: W = tx.receive()?;
+                let (method, mut rxstate) = self.tr.rx_begin(callw)?;
+                let replyw: W = match method.as_str() {
+                    #server_method_matches
+                    _ => bail!("Unknown rpc method {}", method)
+                }?;
+                println!("Server sending reply");
+                tx.send(replyw)
+            }
+        }
+    )
+}
+
+fn create_server_match(method: &TraitItemMethod) -> TokenStream2 {
+    let ident = &method.sig.ident;
+    let param_tokens = &method.sig.decl.inputs;
+
+    let mut param_retrieve_tokens = TokenStream2::new();
+    let mut param_call_tokens = TokenStream2::new();
+    let mut first = true;
+    
+    for p in param_tokens.iter() {
+        if let FnArg::Captured(arg) = p {
+            let name = &arg.pat;
+            let name_literal = make_pat_literal_str(name);
+            let ty = &arg.ty;
+            param_retrieve_tokens.extend(
+                quote!(let #name: #ty = self.tr.rx_read_param(#name_literal, &mut rxstate)?;));
+            if first {
+                first = false;
+            } else {
+                param_call_tokens.extend(quote!(,))
+            }
+            param_call_tokens.extend(quote!(#name));
+        }
+    }
+
+    let ident_literal = make_ident_literal_str(&ident);
+    quote!(
+        #ident_literal => {
+            println!("Server dispatching method");
+            #param_retrieve_tokens
+            let ret = self.imp.#ident(#param_call_tokens)?;
+            self.tr.to_wire(ret)
+        },
     )
 }

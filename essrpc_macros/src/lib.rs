@@ -59,7 +59,7 @@ fn make_ident_literal_str(ident: &Ident) -> LitStr {
 }
     
 
-fn impl_client_method(method: &TraitItemMethod) -> TokenStream2 {
+fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
     let param_tokens = &method.sig.decl.inputs;
 
@@ -92,7 +92,7 @@ fn impl_client_method(method: &TraitItemMethod) -> TokenStream2 {
         fn #ident(#param_tokens) #rettype {
             println!("Client method");
             let mut tr = self.tr.borrow_mut();
-            let mut state = tr.tx_begin_call(#ident_literal)?;
+            let mut state = tr.tx_begin_call(essrpc::MethodId{name: #ident_literal, num: #id})?;
             #add_param_tokens
             println!("Client sending request");
             tr.tx_finalize(&mut state)?;
@@ -105,9 +105,11 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     let client_ident = client_ident(trait_ident);
 
     let mut method_impl_tokens = TokenStream2::new();
-        
+
+    let mut mcnt = 0;
     for method in methods {
-        method_impl_tokens.extend(impl_client_method(method))
+        method_impl_tokens.extend(impl_client_method(method, mcnt));
+        mcnt += 1;
     }
 
     quote!(
@@ -137,9 +139,14 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     let server_ident = server_ident(trait_ident);
 
     let mut server_method_matches = TokenStream2::new();
-        
+    let mut server_by_name_matches = TokenStream2::new();
+
+    let mut mcnt = 0;
     for method in methods {
-        server_method_matches.extend(create_server_match(method))
+        server_method_matches.extend(create_server_match(method, mcnt));
+        let ident_literal = make_ident_literal_str(&method.sig.ident);
+        server_by_name_matches.extend(quote!(#ident_literal => #mcnt,));
+        mcnt += 1;
     }
     
     quote!(
@@ -159,6 +166,13 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
                 #server_ident{tr: transport,
                               imp: imp}
             }
+
+            fn method_num_from_name(name: &str) -> u32 {
+                match name {
+                    #server_by_name_matches
+                    _ => std::u32::MAX
+                }
+            }
             
         }
 
@@ -169,11 +183,15 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
             fn handle_single_call(&mut self) -> std::result::Result<(), failure::Error> {
                 println!("Server trying to receive");
                 let (method, mut rxstate) = self.tr.rx_begin_call()?;
-                match method.as_ref() {
+                let id = match &method {
+                    essrpc::PartialMethodId::Num(num) => *num,
+                    essrpc::PartialMethodId::Name(name) => Self::method_num_from_name(&name),
+                };
+                match id {
                     #server_method_matches
                     _ => {
-                        println!("Unknown rpc method '{}'", method);
-                        bail!("Unknown rpc method '{}'", method)
+                        println!("Unknown rpc method {:?}", method);
+                        bail!("Unknown rpc method {:?}", method)
                     }
                 }
             }
@@ -181,7 +199,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     )
 }
 
-fn create_server_match(method: &TraitItemMethod) -> TokenStream2 {
+fn create_server_match(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
     let param_tokens = &method.sig.decl.inputs;
 
@@ -205,9 +223,8 @@ fn create_server_match(method: &TraitItemMethod) -> TokenStream2 {
         }
     }
 
-    let ident_literal = make_ident_literal_str(&ident);
     quote!(
-        #ident_literal => {
+        #id => {
             println!("Server dispatching method");
             #param_retrieve_tokens
             let ret = self.imp.#ident(#param_call_tokens)?;

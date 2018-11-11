@@ -6,9 +6,8 @@ use serde_json::value::Value;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::Result;
-use crate::RPCError;
-use crate::Transport;
+use crate::{MethodId, PartialMethodId, Result, RPCError, Transport};
+
 
 pub struct JTXState {
     method: &'static str,
@@ -46,8 +45,8 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
     type TXState = JTXState;
     type RXState = JRXState;
    
-    fn tx_begin_call(&mut self, method: &'static str) -> Result<JTXState> {
-        Ok(JTXState{method: method, params: json!({})})
+    fn tx_begin_call(&mut self, method: MethodId) -> Result<JTXState> {
+        Ok(JTXState{method: method.name, params: json!({})})
     }
 
     fn tx_add_param(&mut self, name: &'static str, value: impl Serialize, state: &mut JTXState) -> Result<()> {
@@ -64,7 +63,7 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
         })).map_err(Self::convert_error)
     }
 
-    fn rx_begin_call(&mut self) -> Result<(String, JRXState)> {
+    fn rx_begin_call(&mut self) -> Result<(PartialMethodId, JRXState)> {
         println!("json waiting on serde");
         let value: Value = self.from_channel()?;
         println!("read json from channel");
@@ -74,7 +73,7 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
             .ok_or(RPCError::UnexpectedInput{detail: "json method was not string".to_string()})?
             .to_string();
         println!("read method as {}", method);
-        Ok((method, JRXState{json: value}))
+        Ok((PartialMethodId::Name(method), JRXState{json: value}))
     }
     
     fn rx_read_param<T>(&mut self, name: &'static str, state: &mut JRXState) -> Result<T> where

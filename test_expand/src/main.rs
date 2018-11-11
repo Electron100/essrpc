@@ -11,7 +11,6 @@ use failure::Error;
 
 use essrpc::{RPCClient, RPCServer};
 use essrpc::transforms::JSONTransform;
-use essrpc::transports::ReadWriteTransport;
 use essrpc_macros::essrpc;
 
 #[essrpc]
@@ -35,10 +34,10 @@ impl Foo for FooImpl {
 
 pub fn main() {
     let (s1, s2) = UnixStream::pair().unwrap();;
-    let foo = FooRPCClient::new(JSONTransform::new(), ReadWriteTransport::new(s1));
+    let foo = FooRPCClient::new(JSONTransform::new(s1));
 
     thread::spawn(move || {
-        let mut serve = FooRPCServer::new(FooImpl::new(), JSONTransform::new(), ReadWriteTransport::new(s2));
+        let mut serve = FooRPCServer::new(FooImpl::new(), JSONTransform::new(s2));
         serve.handle_single_call()
     });
     

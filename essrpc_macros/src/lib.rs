@@ -82,7 +82,7 @@ fn impl_client_method(method: &TraitItemMethod) -> TokenStream2 {
             let name = &arg.pat;
             let name_literal = make_pat_literal_str(name);
             add_param_tokens.extend(
-                quote!(self.tr.tx_add_param(#name_literal, #name, &mut state)?;));
+                quote!(tr.tx_add_param(#name_literal, #name, &mut state)?;));
         }
     }
     let rettype = &method.sig.decl.output;
@@ -91,15 +91,13 @@ fn impl_client_method(method: &TraitItemMethod) -> TokenStream2 {
     quote!(
         fn #ident(#param_tokens) #rettype {
             println!("Client method");
-            let mut tx = self.tx.borrow_mut();
-            let mut state = self.tr.tx_begin(#ident_literal)?;
+            let mut tr = self.tr.borrow_mut();
+            let mut state = tr.tx_begin_call(#ident_literal)?;
             #add_param_tokens
-            let data_in = self.tr.tx_finalize(&mut state)?;
             println!("Client sending request");
-            tx.send(data_in)?;
+            tr.tx_finalize(&mut state)?;
             println!("Client reading request response");
-            let data_result = tx.receive()?;
-            self.tr.from_wire(&data_result)
+            tr.rx_response()
         })
 }
 
@@ -113,26 +111,22 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     }
 
     quote!(
-        struct #client_ident<TR: essrpc::Transform, TP: essrpc::Transport> {
-            tr: TR,
-            tx: std::cell::RefCell<TP>
+        struct #client_ident<TR: essrpc::Transform> {
+            tr: std::cell::RefCell<TR>,
         }
 
-        impl <TR, TP, W> essrpc::RPCClient for #client_ident<TR, TP> where
-            TR: essrpc::Transform<Wire=W>,
-            TP: essrpc::Transport<Wire=W> {
+        impl <TR> essrpc::RPCClient for #client_ident<TR> where
+            TR: essrpc::Transform {
 
             type TR = TR;
-            type CTP = TP;
             
-            fn new(transform: TR, transport: TP) -> Self {
-                #client_ident{tr: transform, tx: std::cell::RefCell::new(transport)}
+            fn new(transform: TR) -> Self {
+                #client_ident{tr: std::cell::RefCell::new(transform)}
             }
         }
 
-        impl <TR, TP, W> #trait_ident for #client_ident<TR, TP> where
-            TR: essrpc::Transform<Wire=W>,
-            TP: essrpc::Transport<Wire=W> {
+        impl <TR> #trait_ident for #client_ident<TR> where
+            TR: essrpc::Transform {
             
             #method_impl_tokens
         }
@@ -149,45 +143,39 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     }
     
     quote!(
-        struct #server_ident<T, TR, TP> where
+        struct #server_ident<T, TR> where
             T: #trait_ident,
-            TR: essrpc::Transform,
-            TP: essrpc::Transport {
+            TR: essrpc::Transform {
             
             tr: TR,
-            tx: std::cell::RefCell<TP>,
             imp: T
         }
 
-        impl <T, TR, TP> #server_ident<T, TR, TP> where
+        impl <T, TR> #server_ident<T, TR> where
             T: #trait_ident,
-            TR: essrpc::Transform,
-            TP: essrpc::Transport {
+            TR: essrpc::Transform {
 
-            fn new(imp: T, transform: TR, transport: TP) -> Self {
+            fn new(imp: T, transform: TR) -> Self {
                 #server_ident{tr: transform,
-                              tx: std::cell::RefCell::new(transport),
                               imp: imp}
             }
             
         }
 
-        impl <TR, TP, W, T> essrpc::RPCServer for #server_ident<T, TR, TP> where
-            TR: essrpc::Transform<Wire=W>,
-            TP: essrpc::Transport<Wire=W>,
+        impl <TR, T> essrpc::RPCServer for #server_ident<T, TR> where
+            TR: essrpc::Transform,
             T: #trait_ident
         {
             fn handle_single_call(&mut self) -> std::result::Result<(), failure::Error> {
-                let mut tx = self.tx.borrow_mut();
                 println!("Server trying to receive");
-                let callw: W = tx.receive()?;
-                let (method, mut rxstate) = self.tr.rx_begin(callw)?;
-                let replyw: W = match method.as_str() {
+                let (method, mut rxstate) = self.tr.rx_begin_call()?;
+                match method.as_ref() {
                     #server_method_matches
-                    _ => bail!("Unknown rpc method {}", method)
-                }?;
-                println!("Server sending reply");
-                tx.send(replyw)
+                    _ => {
+                        println!("Unknown rpc method '{}'", method);
+                        bail!("Unknown rpc method '{}'", method)
+                    }
+                }
             }
         }
     )
@@ -223,7 +211,7 @@ fn create_server_match(method: &TraitItemMethod) -> TokenStream2 {
             println!("Server dispatching method");
             #param_retrieve_tokens
             let ret = self.imp.#ident(#param_call_tokens)?;
-            self.tr.to_wire(ret)
+            self.tr.tx_response(ret)
         },
     )
 }

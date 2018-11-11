@@ -111,22 +111,22 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     }
 
     quote!(
-        struct #client_ident<TR: essrpc::Transform> {
+        struct #client_ident<TR: essrpc::Transport> {
             tr: std::cell::RefCell<TR>,
         }
 
         impl <TR> essrpc::RPCClient for #client_ident<TR> where
-            TR: essrpc::Transform {
+            TR: essrpc::Transport {
 
             type TR = TR;
             
-            fn new(transform: TR) -> Self {
-                #client_ident{tr: std::cell::RefCell::new(transform)}
+            fn new(transport: TR) -> Self {
+                #client_ident{tr: std::cell::RefCell::new(transport)}
             }
         }
 
         impl <TR> #trait_ident for #client_ident<TR> where
-            TR: essrpc::Transform {
+            TR: essrpc::Transport {
             
             #method_impl_tokens
         }
@@ -145,7 +145,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     quote!(
         struct #server_ident<T, TR> where
             T: #trait_ident,
-            TR: essrpc::Transform {
+            TR: essrpc::Transport {
             
             tr: TR,
             imp: T
@@ -153,17 +153,17 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
 
         impl <T, TR> #server_ident<T, TR> where
             T: #trait_ident,
-            TR: essrpc::Transform {
+            TR: essrpc::Transport {
 
-            fn new(imp: T, transform: TR) -> Self {
-                #server_ident{tr: transform,
+            fn new(imp: T, transport: TR) -> Self {
+                #server_ident{tr: transport,
                               imp: imp}
             }
             
         }
 
         impl <TR, T> essrpc::RPCServer for #server_ident<T, TR> where
-            TR: essrpc::Transform,
+            TR: essrpc::Transport,
             T: #trait_ident
         {
             fn handle_single_call(&mut self) -> std::result::Result<(), failure::Error> {

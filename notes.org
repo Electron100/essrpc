@@ -4,3 +4,10 @@ Not supported
 -const functions
 -variadic functions
 -generic functions
+
+TODO
+-fix error story
+-bincode support
+-envelop example
+-more examples
+-numeric method id support

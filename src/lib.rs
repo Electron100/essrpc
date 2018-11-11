@@ -7,11 +7,11 @@ use failure::Error;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
-pub mod transforms;
+pub mod transports;
 
 type Result<T> = std::result::Result<T, Error>;
 
-pub trait Transform {
+pub trait Transport {
     type TXState;
     type RXState;
     
@@ -32,7 +32,7 @@ pub trait Transform {
 }
 
 pub trait RPCClient {
-    type TR: Transform;
+    type TR: Transport;
      fn new(transform: Self::TR) -> Self;
 }
 

@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::Result;
 use crate::RPCError;
-use crate::Transform;
+use crate::Transport;
 
 pub struct JTXState {
     method: &'static str,
@@ -19,13 +19,13 @@ pub struct JRXState {
     json: Value
 }
 
-pub struct JSONTransform<C: Read+Write> {
+pub struct JSONTransport<C: Read+Write> {
     channel: C
 }
 
-impl <C: Read+Write> JSONTransform<C> {
+impl <C: Read+Write> JSONTransport<C> {
     pub fn new(channel: C) -> Self {
-        JSONTransform{channel: channel}
+        JSONTransport{channel: channel}
     }
 
     fn convert_error(e: impl Fail) -> failure::Error {
@@ -42,7 +42,7 @@ impl <C: Read+Write> JSONTransform<C> {
             .map_err(Self::convert_error)
     }
 }
-impl <C: Read+Write> Transform for JSONTransform<C> {
+impl <C: Read+Write> Transport for JSONTransport<C> {
     type TXState = JTXState;
     type RXState = JRXState;
    

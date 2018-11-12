@@ -64,15 +64,12 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
     }
 
     fn rx_begin_call(&mut self) -> Result<(PartialMethodId, JRXState)> {
-        println!("json waiting on serde");
         let value: Value = self.from_channel()?;
-        println!("read json from channel");
         let method = value.get("method")
             .ok_or(RPCError::UnexpectedInput{detail: "json is not expected object".to_string()})?
             .as_str()
             .ok_or(RPCError::UnexpectedInput{detail: "json method was not string".to_string()})?
             .to_string();
-        println!("read method as {}", method);
         Ok((PartialMethodId::Name(method), JRXState{json: value}))
     }
     
@@ -95,7 +92,6 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
     }
 
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {
-        println!("server sending response");
         serde_json::to_writer(Write::by_ref(&mut self.channel), &value)
             .map_err(Self::convert_error)
     }

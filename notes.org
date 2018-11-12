@@ -7,6 +7,5 @@ Not supported
 
 TODO
 -fix error story
--bincode support
 -envelop example
 -more examples

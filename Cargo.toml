@@ -1,16 +1,6 @@
-[package]
-name = "essrpc"
-version = "0.1.0"
-authors = ["James Oakley <james@electronstudio.org>"]
+[workspace]
 
-[dependencies]
-bincode = "1.0"
-failure = "0.1.3"
-serde = "1.0"
-serde_json = "1.0"
-essrpc_macros = { path = "./essrpc_macros", version = "0.1.0" }
-uuid = { version = "0.7", features = ["v4"] }
-
-
-
-
+members = [
+ "essrpc",
+ "essrpc_macros",
+]               

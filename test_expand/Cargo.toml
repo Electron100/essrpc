@@ -1,9 +1,0 @@
-[package]
-name = "essrpc_macros_test_expand"
-version = "0.1.0"
-authors = ["James Oakley <james@electronstudio.org>"]
-
-[dependencies]
-essrpc = { path="../" }
-essrpc_macros = { path="../essrpc_macros" }
-failure = "0.1.3"

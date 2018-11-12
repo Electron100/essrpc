@@ -1,3 +1,4 @@
+extern crate bincode;
 extern crate failure;
 extern crate serde;
 extern crate serde_json;

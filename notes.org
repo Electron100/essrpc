@@ -6,9 +6,8 @@ Not supported
 -generic functions
 
 TODO
--fix error story
 -comments/docs
 -license
--envelop example
+-envelope example
 -more examples
-
+-support for failure library

@@ -9,7 +9,6 @@ use std::os::unix::net::UnixStream;
 use std::thread;
 use std::result::Result;
 
-use failure::bail;
 use serde_derive::{Deserialize, Serialize};
 
 use essrpc::{RPCClient, RPCServer};
@@ -91,3 +90,12 @@ fn propagates_error() {
     }
 }
 
+
+fn json_foo() -> impl Foo {
+    let (s1, s2) = UnixStream::pair().unwrap();;
+    thread::spawn(move || {
+        let mut serve = FooRPCServer::new(FooImpl::new(), JSONTransport::new(s2));
+        serve.handle_single_call()
+    });
+    FooRPCClient::new(JSONTransport::new(s1))
+}

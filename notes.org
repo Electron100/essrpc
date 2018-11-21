@@ -7,5 +7,8 @@ Not supported
 
 TODO
 -fix error story
+-comments/docs
+-license
 -envelop example
 -more examples
+

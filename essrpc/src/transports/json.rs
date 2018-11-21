@@ -1,12 +1,11 @@
 use std::io::{Read, Write};
 
-use failure::Fail;
 use serde::{Deserialize, Serialize};
 use serde_json::value::Value;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::{MethodId, PartialMethodId, Result, RPCError, Transport};
+use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind, Transport};
 
 
 pub struct JTXState {
@@ -27,9 +26,9 @@ impl <C: Read+Write> JSONTransport<C> {
         JSONTransport{channel: channel}
     }
 
-    fn convert_error(e: impl Fail) -> failure::Error {
-        let e: failure::Error = e.into();
-        e.context("json (s|d)erialization failure").into()
+    fn convert_error(e: impl std::error::Error) -> RPCError {
+        RPCError::with_cause(RPCErrorKind::SerializationError,
+                             "json serialization or deserialization failed", e)
     }
 
     fn from_channel<T>(&mut self) -> Result<T> where
@@ -50,7 +49,9 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
     }
 
     fn tx_add_param(&mut self, name: &'static str, value: impl Serialize, state: &mut JTXState) -> Result<()> {
-        state.params.as_object_mut().unwrap().insert(name.to_string(), serde_json::to_value(value)?);
+        state.params.as_object_mut().unwrap()
+            .insert(name.to_string(),
+                    serde_json::to_value(value).map_err(Self::convert_error)?);
         Ok(())
     }
 
@@ -66,9 +67,9 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
     fn rx_begin_call(&mut self) -> Result<(PartialMethodId, JRXState)> {
         let value: Value = self.from_channel()?;
         let method = value.get("method")
-            .ok_or(RPCError::UnexpectedInput{detail: "json is not expected object".to_string()})?
+            .ok_or(RPCError::new(RPCErrorKind::SerializationError, "json is not expected object"))?
             .as_str()
-            .ok_or(RPCError::UnexpectedInput{detail: "json method was not string".to_string()})?
+            .ok_or(RPCError::new(RPCErrorKind::SerializationError, "json method was not string"))?
             .to_string();
         Ok((PartialMethodId::Name(method), JRXState{json: value}))
     }
@@ -77,10 +78,10 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
         for<'de> T: serde::Deserialize<'de> {
         
         let param_val = state.json.get("params")
-            .ok_or(RPCError::UnexpectedInput{detail: "json is not expected object".to_string()})?
+            .ok_or(RPCError::new(RPCErrorKind::SerializationError, "json is not expected object"))?
             .get(name)
-            .ok_or(RPCError::UnexpectedInput{detail:
-                                             format!("parameters do not contain {}", name)})?;
+            .ok_or(RPCError::new(RPCErrorKind::SerializationError,
+                                 format!("parameters do not contain {}", name)))?;
         return serde_json::from_value(param_val.clone()).map_err(Self::convert_error);
     }
 

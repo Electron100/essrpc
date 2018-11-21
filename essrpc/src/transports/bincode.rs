@@ -2,10 +2,9 @@
 use std::io::{Read, Write};
 
 use bincode;
-use failure::Fail;
 use serde::{Serialize, Deserialize};
 
-use crate::{MethodId, PartialMethodId, Result, Transport};
+use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind, Transport};
 
 // todo buffer
 
@@ -18,22 +17,21 @@ impl <C: Read+Write> BincodeTransport<C> {
         BincodeTransport{channel: channel}
     }
 
-    fn convert_error(e: impl Fail) -> failure::Error {
-        let e: failure::Error = e.into();
-        e.context("json (s|d)erialization failure").into()
-    }
-
     fn serialize(&mut self, value: impl Serialize) -> Result<()>{
         bincode::serialize_into(Write::by_ref(&mut self.channel),
                                 &value)
-            .map_err(Self::convert_error)
+            .map_err(|e|
+                     RPCError::with_cause(
+                         RPCErrorKind::SerializationError, "bincode serialization failure", e))
     }
 
     fn deserialize<T>(&mut self) -> Result<T> where
         for<'de> T: Deserialize<'de> {
         bincode::deserialize_from(
             Read::by_ref(&mut self.channel))
-            .map_err(Self::convert_error)
+            .map_err(|e|
+                     RPCError::with_cause(
+                         RPCErrorKind::SerializationError, "bincode deserialization failure", e))
     }
 }
 

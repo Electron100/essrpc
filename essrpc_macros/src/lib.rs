@@ -72,7 +72,7 @@ fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
             // this method is not needed for the RPC client
             return TokenStream2::new();
         }
-        panic!("RPC methods must take '&self' as the first parameter");
+        panic!("RPC methods must take '&self' as the first parameter, {} does not", ident);
     }
 
     let mut add_param_tokens = TokenStream2::new();
@@ -85,19 +85,24 @@ fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
                 quote!(tr.tx_add_param(#name_literal, #name, &mut state)?;));
         }
     }
-    let rettype = &method.sig.decl.output;
+    let rettype = match method.sig.decl.output {
+        syn::ReturnType::Default => panic!("RPC methods must have a return type, {} does not ", ident),
+        syn::ReturnType::Type(_arrow, ref t) => t
+    };
     let ident_literal = make_ident_literal_str(ident);
 
     quote!(
-        fn #ident(#param_tokens) #rettype {
-            println!("Client method");
+        fn #ident(#param_tokens) -> #rettype {
             let mut tr = self.tr.borrow_mut();
             let mut state = tr.tx_begin_call(essrpc::MethodId{name: #ident_literal, num: #id})?;
             #add_param_tokens
-            println!("Client sending request");
             tr.tx_finalize(&mut state)?;
-            println!("Client reading request response");
-            tr.rx_response()
+            let ret: std::result::Result<#rettype, essrpc::RPCError> =
+                tr.rx_response();
+            match ret {
+                Ok(v) => v,
+                Err(e) => Err(e.into())
+            }
         })
 }
 
@@ -180,8 +185,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
             TR: essrpc::Transport,
             T: #trait_ident
         {
-            fn handle_single_call(&mut self) -> std::result::Result<(), failure::Error> {
-                println!("Server trying to receive");
+            fn handle_single_call(&mut self) -> std::result::Result<(), essrpc::RPCError> {
                 let (method, mut rxstate) = self.tr.rx_begin_call()?;
                 let id = match &method {
                     essrpc::PartialMethodId::Num(num) => *num,
@@ -190,8 +194,8 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
                 match id {
                     #server_method_matches
                     _ => {
-                        println!("Unknown rpc method {:?}", method);
-                        bail!("Unknown rpc method {:?}", method)
+                        Err(essrpc::RPCError::new(
+                            essrpc::RPCErrorKind::UnknownMethod, format!("Unknown rpc method {:?}", method)))
                     }
                 }
             }
@@ -225,9 +229,8 @@ fn create_server_match(method: &TraitItemMethod, id: u32) -> TokenStream2 {
 
     quote!(
         #id => {
-            println!("Server dispatching method");
             #param_retrieve_tokens
-            let ret = self.imp.#ident(#param_call_tokens)?;
+            let ret = self.imp.#ident(#param_call_tokens);
             self.tr.tx_response(ret)
         },
     )

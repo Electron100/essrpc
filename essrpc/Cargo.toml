@@ -6,6 +6,7 @@ description = "RPC using natural trait definitions and calls."
 readme = "../README.md"
 keywords = ["rpc"]
 license = "MIT"
+repository = "https://github.com/Electron100/essrpc"
 
 [dependencies]
 bincode = "1.0"

@@ -1,7 +1,7 @@
 # Electron's Super Simple RPC (ESSRPC)
-ESSRPC is a lightweight RPC library
-which aims to enable RPC calls as transparently as possible through
-calls to ordinary trait methods.
+ESSRPC is a lightweight RPC library for Rust which aims to enable RPC
+calls as transparently as possible through calls to ordinary trait
+methods.
 
 +  Allows ordinary calls to trait methods to call an implementation across an RPC boundary (in another process, across the network, etc)
 +  Is agnostic to the 

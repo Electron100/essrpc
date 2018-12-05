@@ -1,12 +1,13 @@
 [package]
 name = "essrpc"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["James Oakley <james@electronstudio.org>"]
 description = "RPC using natural trait definitions and calls."
 readme = "../README.md"
 keywords = ["rpc"]
 license = "MIT"
 repository = "https://github.com/Electron100/essrpc"
+documentation = "https://docs.rs/essrpc/"
 
 [dependencies]
 bincode = "1.0"

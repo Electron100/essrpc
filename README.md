@@ -14,7 +14,7 @@ be applied to any trait whose functions each meet the following conditions:
 + Uses only parameter and returns types which implement `Serialize`
 + Is not unsafe
 
-Please see the documentation for examples and more details.
+Please [see the documentation](https://docs.rs/essrpc) for examples and more details.
 
 # Status
 Early alpha. Things are expected to work, but no real world usage has occurred.

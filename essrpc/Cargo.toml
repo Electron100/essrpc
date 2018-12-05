@@ -6,7 +6,6 @@ description = "RPC using natural trait definitions and calls."
 readme = "../README.md"
 keywords = ["rpc"]
 license = "MIT"
-license-file = "../LICENSE"
 
 [dependencies]
 bincode = "1.0"

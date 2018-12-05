@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["James Oakley <james@electronstudio.org>"]
 description = "Macros for ESSRPC. Do not use this crate directly -- use the essrpc crate."
 license = "MIT"
-license-file = "../LICENSE"
 
 [dependencies]
 proc-macro2 = "0.4"

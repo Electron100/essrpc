@@ -17,6 +17,9 @@ pub struct JRXState {
     json: Value
 }
 
+/// Transport implementation over JSON-RPC. Can be used over any
+/// `Read+Write` channel (local socket, internet socket, pipe,
+/// etc).
 pub struct JSONTransport<C: Read+Write> {
     channel: C
 }
@@ -31,6 +34,7 @@ impl <C: Read+Write> JSONTransport<C> {
                              "json serialization or deserialization failed", e)
     }
 
+    // Deserialize a value from the channel
     fn from_channel<T>(&mut self) -> Result<T> where
         for<'de> T: serde::Deserialize<'de> {
 

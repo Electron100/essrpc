@@ -6,8 +6,10 @@ use serde::{Serialize, Deserialize};
 
 use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind, Transport};
 
-// todo buffer
-
+/// Transport implementation using Bincode serialization. Can be used
+/// over any `Read+Write` channel (local socket, internet socket,
+/// pipe, etc). The present implementation is naive with regards to
+/// this channel -- no buffering is performed.
 pub struct BincodeTransport<C: Read+Write> {
     channel: C
 }

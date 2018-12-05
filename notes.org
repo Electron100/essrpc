@@ -6,8 +6,8 @@ Not supported
 -generic functions
 
 TODO
--comments/docs
 -license
+-features
 -envelope example
 -more examples
 -support for failure library

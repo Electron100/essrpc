@@ -1,6 +1,4 @@
 extern crate essrpc;
-extern crate essrpc_macros;
-extern crate failure;
 extern crate serde;
 extern crate serde_derive;
 
@@ -13,7 +11,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use essrpc::{RPCClient, RPCServer};
 use essrpc::transports::{BincodeTransport, JSONTransport};
-use essrpc_macros::essrpc;
+use essrpc::essrpc;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TestError{
@@ -22,7 +20,7 @@ pub struct TestError{
 
 impl fmt::Display for TestError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "this is an error")
+        write!(f, "error: {}", self.msg)
     }
 }
 
@@ -32,6 +30,10 @@ impl From<essrpc::RPCError> for TestError {
     fn from(error: essrpc::RPCError) -> Self {
         TestError{msg: format!("{}", error)}
     }
+}
+
+fn generic2<T: fmt::Display>(msg: T) -> Result<String, TestError> {
+    Ok(format!("the message is {}", msg))
 }
 
 #[essrpc]
@@ -59,13 +61,7 @@ impl Foo for FooImpl {
 
 #[test]
 fn basic_bincode() {
-    let (s1, s2) = UnixStream::pair().unwrap();;
-    let foo = FooRPCClient::new(BincodeTransport::new(s1));
-
-    thread::spawn(move || {
-        let mut serve = FooRPCServer::new(FooImpl::new(), BincodeTransport::new(s2));
-        serve.handle_single_call()
-    });
+    let foo = bincode_foo();
     match foo.bar("the answer".to_string(), 42) {
         Ok(result) => assert_eq!("the answer is 42", result),
         Err(e) => panic!("error: {:?}", e)
@@ -90,12 +86,38 @@ fn propagates_error() {
     }
 }
 
+#[test]
+fn serve_multiple() {
+    let (s1, s2) = UnixStream::pair().unwrap();
+    thread::spawn(move || {
+        let mut serve = FooRPCServer::new(FooImpl::new(), BincodeTransport::new(s2));
+        serve.serve()
+    });
+    let foo = FooRPCClient::new(BincodeTransport::new(s1));
+    match foo.bar("the answer".to_string(), 42) {
+        Ok(result) => assert_eq!("the answer is 42", result),
+        Err(e) => panic!("error: {:?}", e)
+    }
+    match foo.bar("the answer".to_string(), 43) {
+        Ok(result) => assert_eq!("the answer is 43", result),
+        Err(e) => panic!("error: {:?}", e)
+    }
+}
 
 fn json_foo() -> impl Foo {
     let (s1, s2) = UnixStream::pair().unwrap();;
     thread::spawn(move || {
         let mut serve = FooRPCServer::new(FooImpl::new(), JSONTransport::new(s2));
-        serve.handle_single_call()
+        serve.serve_single_call()
     });
     FooRPCClient::new(JSONTransport::new(s1))
+}
+
+fn bincode_foo() -> impl Foo {
+    let (s1, s2) = UnixStream::pair().unwrap();
+    thread::spawn(move || {
+        let mut serve = FooRPCServer::new(FooImpl::new(), BincodeTransport::new(s2));
+        serve.serve_single_call()
+    });
+    FooRPCClient::new(BincodeTransport::new(s1))
 }

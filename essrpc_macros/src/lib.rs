@@ -14,7 +14,8 @@ use syn::{FnArg, ItemTrait, LitStr, Pat, TraitItem, TraitItemMethod};
 
 #[proc_macro_attribute]
 pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
-    let args = args.to_string();
+    // We don't handle any arguments today, perhaps we will in the future.
+    let _args = args.to_string();
 
     let mut result: TokenStream2 = input.clone().into();
 
@@ -185,7 +186,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
             TR: essrpc::Transport,
             T: #trait_ident
         {
-            fn handle_single_call(&mut self) -> std::result::Result<(), essrpc::RPCError> {
+            fn serve_single_call(&mut self) -> std::result::Result<(), essrpc::RPCError> {
                 let (method, mut rxstate) = self.tr.rx_begin_call()?;
                 let id = match &method {
                     essrpc::PartialMethodId::Num(num) => *num,

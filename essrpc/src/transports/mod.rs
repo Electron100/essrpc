@@ -1,3 +1,4 @@
+//! `Transport` implementations and helpers.
 use std::io;
 use std::io::{Read, Write};
 
@@ -7,6 +8,11 @@ mod json;
 pub use self::json::JSONTransport;
 pub use self::bincode::BincodeTransport;
 
+/// Type which combines a `Read` and a `Write` to implement both
+/// `Read` and `Write` in a single type. May be useful in satisfying
+/// the construction requirements of transports such as
+/// [BincodeTransport](struct.BincodeTransport.html) or
+/// [JSONTransport](struct.JSONTransport.html).
 pub struct ReadWrite<R: Read, W: Write> {
     r: R,
     w: W,

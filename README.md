@@ -1,3 +1,6 @@
+[![Latest Version](https://img.shields.io/crates/v/essrpc.svg)](https://crates.io/crates/essrpc)
+[![docs](https://docs.rs/essrpc/badge.svg)](https://docs.rs/essrpc)
+
 # Electron's Super Simple RPC (ESSRPC)
 ESSRPC is a lightweight RPC library for Rust which aims to enable RPC
 calls as transparently as possible through calls to ordinary trait

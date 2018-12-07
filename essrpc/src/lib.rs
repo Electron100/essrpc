@@ -46,14 +46,7 @@
 // We do not do doctests on the examples above because with all the
 // macros and generated code, it is simply too much effort to get things working.
 
-extern crate bincode;
 extern crate essrpc_macros;
-extern crate serde;
-extern crate serde_derive;
-extern crate serde_json;
-extern crate uuid;
-
-
 
 // We would like to mark as #[doc(inline)] and define the
 // on the macro definition site, but this does not work properly on macros

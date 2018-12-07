@@ -1,6 +1,7 @@
 [package]
 name = "essrpc_macros"
 version = "0.1.0"
+edition = "2018"
 authors = ["James Oakley <james@electronstudio.org>"]
 description = "Macros for ESSRPC. Do not use this crate directly -- use the essrpc crate."
 license = "MIT"

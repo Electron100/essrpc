@@ -2,11 +2,17 @@
 use std::io;
 use std::io::{Read, Write};
 
+#[cfg(feature = "bincode_transport")]
 mod bincode;
-mod json;
-
-pub use self::json::JSONTransport;
+#[cfg(feature = "bincode_transport")]
 pub use self::bincode::BincodeTransport;
+
+#[cfg(feature = "json_transport")]
+mod json;
+#[cfg(feature = "json_transport")]
+pub use self::json::JSONTransport;
+
+
 
 /// Type which combines a `Read` and a `Write` to implement both
 /// `Read` and `Write` in a single type. May be useful in satisfying

@@ -10,6 +10,7 @@ use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind, Transport
 /// over any `Read+Write` channel (local socket, internet socket,
 /// pipe, etc). The present implementation is naive with regards to
 /// this channel -- no buffering is performed.
+/// Enable the "bincode_transport" feature to use this.
 pub struct BincodeTransport<C: Read+Write> {
     channel: C
 }

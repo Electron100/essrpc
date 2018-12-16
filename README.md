@@ -22,6 +22,10 @@ Please [see the documentation](https://docs.rs/essrpc) for examples and more det
 # Status
 Early alpha. Things are expected to work, but no real world usage has occurred.
 
+# Configurable Features
++ `bincode_transport`: Enables [BincodeTransport](https://docs.rs/essrpc/0.1.1/essrpc/transports/struct.BincodeTransport.html)
++ `json_transport`: Enables [JSONTransport](https://docs.rs/essrpc/0.1.1/essrpc/transports/struct.JSONTransport.html)
+
 # Inspirations and Motivations
 ESSRPC was inspired by **[tarpc](https://github.com/google/tarpc)** and by the `build_rpc_trait!` macro
 from **[jsonrpc](https://github.com/paritytech/jsonrpc)**. Both of these are more mature projects. The recent

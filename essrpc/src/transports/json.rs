@@ -19,7 +19,7 @@ pub struct JRXState {
 
 /// Transport implementation over JSON-RPC. Can be used over any
 /// `Read+Write` channel (local socket, internet socket, pipe,
-/// etc).
+/// etc). Enable the "json_transport" feature to use this.
 pub struct JSONTransport<C: Read+Write> {
     channel: C
 }

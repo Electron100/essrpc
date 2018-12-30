@@ -119,7 +119,7 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     }
 
     quote!(
-        struct #client_ident<TR: essrpc::Transport> {
+        pub struct #client_ident<TR: essrpc::Transport> {
             tr: std::cell::RefCell<TR>,
         }
 
@@ -156,7 +156,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     }
     
     quote!(
-        struct #server_ident<T, TR> where
+        pub struct #server_ident<T, TR> where
             T: #trait_ident,
             TR: essrpc::Transport {
             
@@ -168,7 +168,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
             T: #trait_ident,
             TR: essrpc::Transport {
 
-            fn new(imp: T, transport: TR) -> Self {
+            pub fn new(imp: T, transport: TR) -> Self {
                 #server_ident{tr: transport,
                               imp: imp}
             }

@@ -5,7 +5,8 @@ use serde_json::value::Value;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind, Transport};
+use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind,
+            ClientTransport, ServerTransport};
 
 
 pub struct JTXState {
@@ -44,10 +45,9 @@ impl <C: Read+Write> JSONTransport<C> {
             .map_err(Self::convert_error)
     }
 }
-impl <C: Read+Write> Transport for JSONTransport<C> {
+impl <C: Read+Write> ClientTransport for JSONTransport<C> {
     type TXState = JTXState;
-    type RXState = JRXState;
-   
+
     fn tx_begin_call(&mut self, method: MethodId) -> Result<JTXState> {
         Ok(JTXState{method: method.name, params: json!({})})
     }
@@ -68,6 +68,16 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
         })).map_err(Self::convert_error)
     }
 
+    fn rx_response<T>(&mut self) -> Result<T> where
+        for<'de> T: Deserialize<'de>
+    {
+        self.from_channel()
+
+    }
+}
+impl <C: Read+Write> ServerTransport for JSONTransport<C> {
+    type RXState = JRXState;
+
     fn rx_begin_call(&mut self) -> Result<(PartialMethodId, JRXState)> {
         let value: Value = self.from_channel()?;
         let method = value.get("method")
@@ -87,13 +97,6 @@ impl <C: Read+Write> Transport for JSONTransport<C> {
             .ok_or(RPCError::new(RPCErrorKind::SerializationError,
                                  format!("parameters do not contain {}", name)))?;
         return serde_json::from_value(param_val.clone()).map_err(Self::convert_error);
-    }
-
-    fn rx_response<T>(&mut self) -> Result<T> where
-        for<'de> T: Deserialize<'de>
-    {
-        self.from_channel()
-
     }
 
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {

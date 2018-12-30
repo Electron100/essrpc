@@ -4,7 +4,8 @@ use std::io::{Read, Write};
 use bincode;
 use serde::{Serialize, Deserialize};
 
-use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind, Transport};
+use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind,
+            ClientTransport, ServerTransport};
 
 /// Transport implementation using Bincode serialization. Can be used
 /// over any `Read+Write` channel (local socket, internet socket,
@@ -38,9 +39,9 @@ impl <C: Read+Write> BincodeTransport<C> {
     }
 }
 
-impl <C: Read+Write> Transport for BincodeTransport<C> {
+impl <C: Read+Write> ClientTransport for BincodeTransport<C> {
     type TXState = ();
-    type RXState = ();
+
     fn tx_begin_call(&mut self, method: MethodId) -> Result<()> {
         self.serialize(method.num)
     }
@@ -54,6 +55,16 @@ impl <C: Read+Write> Transport for BincodeTransport<C> {
         Ok(())
     }
 
+    fn rx_response<T>(&mut self) -> Result<T> where
+        for<'de> T: Deserialize<'de> {
+        self.deserialize()
+    }
+
+
+}
+impl <C: Read+Write> ServerTransport for BincodeTransport<C> {
+    type RXState = ();
+ 
     fn rx_begin_call(&mut self) -> Result<(PartialMethodId, ())> {
         let method_id: u32 = self.deserialize()?;
         Ok((PartialMethodId::Num(method_id), ()))
@@ -61,12 +72,6 @@ impl <C: Read+Write> Transport for BincodeTransport<C> {
     
     fn rx_read_param<T>(&mut self, _name: &'static str, _state: &mut ()) -> Result<T> where
         for<'de> T: serde::Deserialize<'de> {
-        self.deserialize()
-    }
-
-    fn rx_response<T>(&mut self) -> Result<T> where
-        for<'de> T: Deserialize<'de>
-    {
         self.deserialize()
     }
 

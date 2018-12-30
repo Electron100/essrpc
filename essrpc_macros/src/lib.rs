@@ -119,12 +119,12 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     }
 
     quote!(
-        pub struct #client_ident<TR: essrpc::Transport> {
+        pub struct #client_ident<TR: essrpc::ClientTransport> {
             tr: std::cell::RefCell<TR>,
         }
 
         impl <TR> essrpc::RPCClient for #client_ident<TR> where
-            TR: essrpc::Transport {
+            TR: essrpc::ClientTransport {
 
             type TR = TR;
             
@@ -134,7 +134,7 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
         }
 
         impl <TR> #trait_ident for #client_ident<TR> where
-            TR: essrpc::Transport {
+            TR: essrpc::ClientTransport {
             
             #method_impl_tokens
         }
@@ -158,7 +158,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
     quote!(
         pub struct #server_ident<T, TR> where
             T: #trait_ident,
-            TR: essrpc::Transport {
+            TR: essrpc::ServerTransport {
             
             tr: TR,
             imp: T
@@ -166,7 +166,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
 
         impl <T, TR> #server_ident<T, TR> where
             T: #trait_ident,
-            TR: essrpc::Transport {
+            TR: essrpc::ServerTransport {
 
             pub fn new(imp: T, transport: TR) -> Self {
                 #server_ident{tr: transport,
@@ -183,7 +183,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
         }
 
         impl <TR, T> essrpc::RPCServer for #server_ident<T, TR> where
-            TR: essrpc::Transport,
+            TR: essrpc::ServerTransport,
             T: #trait_ident
         {
             fn serve_single_call(&mut self) -> std::result::Result<(), essrpc::RPCError> {

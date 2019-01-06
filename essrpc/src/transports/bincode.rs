@@ -21,6 +21,11 @@ impl <C: Read+Write> BincodeTransport<C> {
         BincodeTransport{channel: channel}
     }
 
+    /// Get the underlying read/write channel
+    pub fn channel<'a>(&'a self) -> &'a C {
+        &self.channel
+    }
+
     fn serialize(&mut self, value: impl Serialize) -> Result<()>{
         bincode::serialize_into(Write::by_ref(&mut self.channel),
                                 &value)

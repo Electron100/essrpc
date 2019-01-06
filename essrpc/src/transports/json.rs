@@ -30,6 +30,11 @@ impl <C: Read+Write> JSONTransport<C> {
         JSONTransport{channel: channel}
     }
 
+    /// Get the underlying read/write channel
+    pub fn channel<'a>(&'a self) -> &'a C {
+        &self.channel
+    }
+
     fn convert_error(e: impl std::error::Error) -> RPCError {
         RPCError::with_cause(RPCErrorKind::SerializationError,
                              "json serialization or deserialization failed", e)

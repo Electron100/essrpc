@@ -28,6 +28,14 @@ impl <R:Read, W: Write> ReadWrite<R, W> {
     pub fn new(r: R, w: W) -> Self {
         ReadWrite{r: r, w: w}
     }
+    /// Get the underlying read channel
+    pub fn readable<'a>(&'a self) -> &'a R {
+        &self.r
+    }
+    // Get the underlying write channel
+    pub fn writable<'a>(&'a self) -> &'a W {
+        &self.w
+    }
 }
 
 impl <R:Read, W: Write> Read for ReadWrite<R, W> {

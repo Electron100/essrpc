@@ -55,7 +55,7 @@ impl <C: Read+Write> ClientTransport for BincodeTransport<C> {
         Ok(())
     }
 
-    fn rx_response<T>(&mut self) -> Result<T> where
+    fn rx_response<T>(&mut self, _state: &mut ()) -> Result<T> where
         for<'de> T: Deserialize<'de> {
         self.deserialize()
     }

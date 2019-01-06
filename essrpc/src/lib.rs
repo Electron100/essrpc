@@ -109,8 +109,10 @@ pub trait ClientTransport {
     fn tx_finalize(&mut self, state: &mut Self::TXState) ->
         Result<()>;
 
-    /// Read the return value of a method call. Always called after `tx_finalize`.
-    fn rx_response<T>(&mut self) -> Result<T> where
+    /// Read the return value of a method call. Always called after
+    /// `tx_finalize`. `state` is the object returned by
+    /// `tx_begin_call`.
+    fn rx_response<T>(&mut self, state: &mut Self::TXState) -> Result<T> where
         for<'de> T: Deserialize<'de>;
 }
 

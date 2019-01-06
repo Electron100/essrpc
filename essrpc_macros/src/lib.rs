@@ -99,7 +99,7 @@ fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
             #add_param_tokens
             tr.tx_finalize(&mut state)?;
             let ret: std::result::Result<#rettype, essrpc::RPCError> =
-                tr.rx_response();
+                tr.rx_response(&mut state);
             match ret {
                 Ok(v) => v,
                 Err(e) => Err(e.into())

@@ -68,7 +68,7 @@ impl <C: Read+Write> ClientTransport for JSONTransport<C> {
         })).map_err(Self::convert_error)
     }
 
-    fn rx_response<T>(&mut self) -> Result<T> where
+    fn rx_response<T>(&mut self, _state: &mut JTXState) -> Result<T> where
         for<'de> T: Deserialize<'de>
     {
         self.from_channel()

@@ -38,14 +38,15 @@ impl <C: Read+Write> BincodeTransport<C> {
         for<'de> T: Deserialize<'de> {
         bincode::deserialize_from(
             Read::by_ref(&mut self.channel))
-            .map_err(|e|
+            .map_err(|e| {
                      RPCError::with_cause(
-                         RPCErrorKind::SerializationError, "bincode deserialization failure", e))
+                         RPCErrorKind::SerializationError, "bincode deserialization failure", e)})
     }
 }
 
 impl <C: Read+Write> ClientTransport for BincodeTransport<C> {
     type TXState = ();
+    type FinalState = ();
 
     fn tx_begin_call(&mut self, method: MethodId) -> Result<()> {
         self.serialize(method.num)
@@ -60,7 +61,7 @@ impl <C: Read+Write> ClientTransport for BincodeTransport<C> {
         Ok(())
     }
 
-    fn rx_response<T>(&mut self, _state: &mut ()) -> Result<T> where
+    fn rx_response<T>(&mut self, _state: ()) -> Result<T> where
         for<'de> T: Deserialize<'de> {
         self.deserialize()
     }

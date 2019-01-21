@@ -35,51 +35,74 @@ impl <C: Read+Write> JSONTransport<C> {
         &self.channel
     }
 
-    fn convert_error(e: impl std::error::Error) -> RPCError {
-        RPCError::with_cause(RPCErrorKind::SerializationError,
-                             "json serialization or deserialization failed", e)
-    }
-
     // Deserialize a value from the channel
     fn from_channel<T>(&mut self) -> Result<T> where
         for<'de> T: serde::Deserialize<'de> {
-
-        let read = serde_json::de::IoRead::new(Read::by_ref(&mut self.channel));
-        let mut de = serde_json::de::Deserializer::new(read);
-        serde::de::Deserialize::deserialize(&mut de)
-            .map_err(Self::convert_error)
+        read_value_from_json(Read::by_ref(&mut self.channel))
     }
 }
 impl <C: Read+Write> ClientTransport for JSONTransport<C> {
     type TXState = JTXState;
+    type FinalState = ();
 
     fn tx_begin_call(&mut self, method: MethodId) -> Result<JTXState> {
-        Ok(JTXState{method: method.name, params: json!({})})
+        Ok(begin_call(method))
     }
 
     fn tx_add_param(&mut self, name: &'static str, value: impl Serialize, state: &mut JTXState) -> Result<()> {
-        state.params.as_object_mut().unwrap()
-            .insert(name.to_string(),
-                    serde_json::to_value(value).map_err(Self::convert_error)?);
-        Ok(())
+        add_param(name, value, state)
     }
 
     fn tx_finalize(&mut self, state: &mut JTXState) -> Result<()> {
-        serde_json::to_writer(Write::by_ref(&mut self.channel), &json!({
-            "jsonrpc": "2.0",
-            "method": state.method,
-            "params": state.params,
-            "id": format!("{}", Uuid::new_v4())
-        })).map_err(Self::convert_error)
+        serde_json::to_writer(Write::by_ref(&mut self.channel), &value_for_state(state))
+            .map_err(convert_error)
     }
 
-    fn rx_response<T>(&mut self, _state: &mut JTXState) -> Result<T> where
+    fn rx_response<T>(&mut self, _state: ()) -> Result<T> where
         for<'de> T: Deserialize<'de>
     {
         self.from_channel()
 
     }
 }
+
+
+fn convert_error(e: impl std::error::Error) -> RPCError {
+    RPCError::with_cause(RPCErrorKind::SerializationError,
+                         "json serialization or deserialization failed", e)
+}
+
+fn begin_call(method: MethodId) -> JTXState {
+    JTXState{method: method.name, params: json!({})}
+}
+
+fn value_for_state(state: &JTXState) -> serde_json::Value {
+    json!({
+        "jsonrpc": "2.0",
+        "method": state.method,
+        "params": state.params,
+        "id": format!("{}", Uuid::new_v4())
+    })
+}
+
+fn add_param(name: &'static str, value: impl Serialize, state: &mut JTXState) -> Result<()> {
+    state.params.as_object_mut().unwrap()
+        .insert(name.to_string(),
+                serde_json::to_value(value).map_err(convert_error)?);
+    Ok(())
+}
+
+fn read_value_from_json<T, R>(reader: R) -> Result<T> where
+    for<'de> T: serde::Deserialize<'de>,
+    R: Read {
+    
+    let read = serde_json::de::IoRead::new(reader);
+    let mut de = serde_json::de::Deserializer::new(read);
+    serde::de::Deserialize::deserialize(&mut de)
+        .map_err(convert_error)
+    
+}
+
 impl <C: Read+Write> ServerTransport for JSONTransport<C> {
     type RXState = JRXState;
 
@@ -101,12 +124,78 @@ impl <C: Read+Write> ServerTransport for JSONTransport<C> {
             .get(name)
             .ok_or(RPCError::new(RPCErrorKind::SerializationError,
                                  format!("parameters do not contain {}", name)))?;
-        return serde_json::from_value(param_val.clone()).map_err(Self::convert_error);
+        return serde_json::from_value(param_val.clone()).map_err(convert_error);
     }
 
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {
         serde_json::to_writer(Write::by_ref(&mut self.channel), &value)
-            .map_err(Self::convert_error)
+            .map_err(convert_error)
+    }    
+}
+
+#[cfg(feature = "async_client")]
+mod async_client {
+    use super::*;
+    use crate::{AsyncClientTransport};
+    use futures::{future, Future};
+    use std::ops::Deref;
+    
+    type FutureBytes = Box<Future<Item=Vec<u8>, Error=RPCError>>;
+    
+    /// Like JSONTransport except for use as AsyncClientTransport. 
+    pub struct JSONAsyncClientTransport<F>
+    where
+        F: Fn(Vec<u8>) -> FutureBytes {
+        transact: F
     }
     
+    impl <F> JSONAsyncClientTransport<F>
+    where
+        F: Fn(Vec<u8>) -> FutureBytes {
+        
+        /// Create an AsyncJSONTransport. `transact` must be a
+        /// function which given the raw bytes to transmit to the server,
+        /// returns a future representing the raw bytes returned from the server.
+        pub fn new(transact: F) -> Self {
+            JSONAsyncClientTransport{transact}
+        }
+    }
+
+    impl <F> AsyncClientTransport for JSONAsyncClientTransport<F>
+    where
+        F: Fn(Vec<u8>) -> FutureBytes {
+        
+        type TXState = JTXState;
+        type FinalState = FutureBytes;
+        
+        fn tx_begin_call(&mut self, method: MethodId) -> Result<JTXState> {
+            Ok(begin_call(method))
+        }
+
+        fn tx_add_param(&mut self, name: &'static str, value: impl Serialize, state: &mut JTXState) -> Result<()> {
+            add_param(name, value, state)
+        }
+
+        fn tx_finalize(&mut self, state: &mut JTXState) -> Result<FutureBytes> {
+            let j = serde_json::to_vec(&value_for_state(state))
+                .map_err(convert_error)?;
+            Ok((self.transact)(j))
+        }
+
+        fn rx_response<T>(&mut self, state: FutureBytes) -> Box<Future<Item=T, Error=RPCError>> where
+            for<'de> T: Deserialize<'de>,
+            T: 'static {
+
+            Box::new(state.and_then(|data: Vec<u8>| {
+                let ret = read_value_from_json(data.deref());
+                match ret {
+                    Ok(val) => future::result(val),
+                    Err(e) => future::err(e)
+                }
+            }))
+        }
+    }   
 }
+
+#[cfg(feature = "async_client")]
+pub use self::async_client::JSONAsyncClientTransport;

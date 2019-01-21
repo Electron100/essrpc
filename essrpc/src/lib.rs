@@ -12,7 +12,7 @@
 //! server. For a trait named `Foo`, the macro will generate
 //! `FooRPCClient` which implements both
 //! [RPCClient](trait.RPCClient.html) and `Foo` as well as
-//! `FooRPCServer` which implements [RPCServer](trait.RPCServer.html)
+//! `FooRPCServer` which implements [RPCServer](trait.RPCServer.html).
 //! 
 //! # Examples
 //! A trait can apply the `essrpc` attribute like this.
@@ -43,6 +43,31 @@
 //!     Err(e) => panic!("error: {:?}", e)
 //! }
 //! ```
+//!
+//! # Asynchronous Clients
+//! 
+//! By default, the `#[essrpc]` attribute generates a synchronous
+//! client.  Asynchronous clients can be generated via
+//! `#[essrpc(async)]`, or `#[essrpc(sync, async)]` if both
+//! synchronous and asynchronous clients are needed. For asynchronous,
+//! the macro generates a new trait, suffixed with `Async` for which
+//! every method returns a boxed `Future` instead of a `Result`, with
+//! the same success and error types, and a type implementing
+//! `AsyncRPCServer`. For example,
+//!
+//! ```ignore
+//! #[essrpc(async)]
+//! pub trait Foo {
+//!    fn bar(&self, a: String, b: i32) -> Result<String, SomeError>;
+//! }
+//! ```
+//! 
+//! Would generate a `FooAsync` trait with a `bar` method returning
+//! `Box<Future<Item=String, Error=SomeError>>` and a
+//! `FooAsyncRPCClient` struct implementing both `FooAsync` and
+//! `AsyncRPCClient`.
+//! 
+
 // We do not do doctests on the examples above because with all the
 // macros and generated code, it is simply too much effort to get things working.
 
@@ -91,6 +116,10 @@ pub trait ClientTransport {
     /// transmission on the client. May be unit if the transport does not need to track
     /// state or does so through member variables.
     type TXState;
+
+    /// Type of state object returned from tx_finalize and consumed by rx_response. May be unit.
+    type FinalState;
+    
     /// Begin calling the given method. The transport may begin transmitting over the wire,
     /// or it may may wait until the call to `tx_finalize`. 
     fn tx_begin_call(&mut self, method: MethodId) -> Result<Self::TXState>;
@@ -107,13 +136,50 @@ pub trait ClientTransport {
     /// the transport has not yet transmitted the method identifier
     /// and parameters over the wire, it should do so at this time.
     fn tx_finalize(&mut self, state: &mut Self::TXState) ->
-        Result<()>;
+        Result<Self::FinalState>;
 
     /// Read the return value of a method call. Always called after
     /// `tx_finalize`. `state` is the object returned by
-    /// `tx_begin_call`.
-    fn rx_response<T>(&mut self, state: &mut Self::TXState) -> Result<T> where
+    /// `tx_finalize`.
+    fn rx_response<T>(&mut self, state: Self::FinalState) -> Result<T> where
         for<'de> T: Deserialize<'de>;
+}
+
+#[cfg(feature = "async_client")]
+/// Trait for RPC transport (client) to be used with asynchronous clients
+pub trait AsyncClientTransport {
+    /// Type of transport-internal state used when bulding a call for
+    /// transmission on the client. May be unit if the transport does not need to track
+    /// state or does so through member variables.
+    type TXState;
+
+    /// Type of state object returned from tx_finalize and consumed by rx_response. May be unit.
+    type FinalState;
+    
+    /// Begin calling the given method. The transport may begin transmitting over the wire,
+    /// or it may may wait until the call to `tx_finalize`. 
+    fn tx_begin_call(&mut self, method: MethodId) -> Result<Self::TXState>;
+    /// Add a parameter to a method call started with
+    /// `tx_begin_call`. This method is guaranteed to be called only
+    /// after `tx_begin_call` and to be called appropriately for each
+    /// parameter of the method passed to `tx_begin_call`.  `state` is
+    /// the object returned by `tx_begin_call`. Parameters are always
+    /// added and read in order, so transmitting the name is not a requirement.
+    fn tx_add_param(&mut self, name: &'static str, value: impl Serialize,
+                    state: &mut Self::TXState) -> Result<()>;
+    /// Finalize transmission of a method call. Called only after
+    /// `tx_begin_call` and appropriate calls to `tx_add_param`. If
+    /// the transport has not yet transmitted the method identifier
+    /// and parameters over the wire, it should do so at this time.
+    fn tx_finalize(&mut self, state: &mut Self::TXState) ->
+        Result<Self::FinalState>;
+
+    /// Read the return value of a method call. Always called after
+    /// `tx_finalize`. `state` is the object returned by
+    /// `tx_finalize`.
+    fn rx_response<T>(&mut self, state: Self::FinalState) -> Box<futures::Future<Item=T, Error=RPCError>> where
+        for<'de> T: Deserialize<'de>,
+        T: 'static;
 }
 
 /// Trait for RPC transport (server). ESSRPC attempts to make as few
@@ -145,6 +211,17 @@ pub trait ServerTransport {
 pub trait RPCClient {
     /// Type of transport used by this client.
     type TR: ClientTransport;
+     fn new(transform: Self::TR) -> Self;
+}
+
+#[cfg(feature = "async_client")]
+/// Trait implemented by all RPC clients generated by the `essrpc`
+/// macro when the `async` parameter is used. For a trait named `Foo`,
+/// the macro will generate `FooAsyncRPCClient` which implements both
+/// `AsyncRPCClient` and `FooAsync`.
+pub trait AsyncRPCClient {
+    /// Type of transport used by this client.
+    type TR: AsyncClientTransport;
      fn new(transform: Self::TR) -> Self;
 }
 
@@ -278,6 +355,10 @@ pub enum RPCErrorKind {
     SerializationError,
     /// RPC server was asked to handle an unknown method.
     UnknownMethod,
+    /// Error in underlying transport
+    TransportError,
+    /// Something went horribly wrong in RPC internals
+    IllegalState,
     /// Other error.
     Other,
 }

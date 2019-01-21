@@ -11,6 +11,8 @@ pub use self::bincode::BincodeTransport;
 mod json;
 #[cfg(feature = "json_transport")]
 pub use self::json::JSONTransport;
+#[cfg(all(feature = "json_transport", feature = "async_client"))]
+pub use self::json::JSONAsyncClientTransport;
 
 
 

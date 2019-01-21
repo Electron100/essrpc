@@ -13,8 +13,10 @@ documentation = "https://docs.rs/essrpc/"
 [features]
 bincode_transport = ["bincode"]
 json_transport = ["serde_json", "uuid"]
+async_client = ["futures"]
 
 [dependencies]
+futures = { version = "0.1", optional=true }
 serde = "1.0"
 serde_derive = "1.0"
 essrpc_macros = { path = "../essrpc_macros", version = "0.1.0" }

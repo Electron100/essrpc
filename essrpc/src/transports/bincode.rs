@@ -57,7 +57,7 @@ impl <C: Read+Write> ClientTransport for BincodeTransport<C> {
         self.serialize(value)
     }
 
-    fn tx_finalize(&mut self, _state: &mut ()) -> Result<()> {
+    fn tx_finalize(&mut self, _state: ()) -> Result<()> {
         Ok(())
     }
 

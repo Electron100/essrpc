@@ -138,7 +138,7 @@ fn client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
         let mut tr = self.tr.borrow_mut();
         let mut state = tr.tx_begin_call(essrpc::MethodId{name: #ident_literal, num: #id})?;
         #add_param_tokens
-        let state = tr.tx_finalize(&mut state)?;
+        let state = tr.tx_finalize(state)?;
     )
 }
 

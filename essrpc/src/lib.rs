@@ -135,7 +135,7 @@ pub trait ClientTransport {
     /// `tx_begin_call` and appropriate calls to `tx_add_param`. If
     /// the transport has not yet transmitted the method identifier
     /// and parameters over the wire, it should do so at this time.
-    fn tx_finalize(&mut self, state: &mut Self::TXState) ->
+    fn tx_finalize(&mut self, state: Self::TXState) ->
         Result<Self::FinalState>;
 
     /// Read the return value of a method call. Always called after
@@ -171,7 +171,7 @@ pub trait AsyncClientTransport {
     /// `tx_begin_call` and appropriate calls to `tx_add_param`. If
     /// the transport has not yet transmitted the method identifier
     /// and parameters over the wire, it should do so at this time.
-    fn tx_finalize(&mut self, state: &mut Self::TXState) ->
+    fn tx_finalize(&mut self, state: Self::TXState) ->
         Result<Self::FinalState>;
 
     /// Read the return value of a method call. Always called after

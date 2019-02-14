@@ -53,8 +53,8 @@ impl <C: Read+Write> ClientTransport for JSONTransport<C> {
         add_param(name, value, state)
     }
 
-    fn tx_finalize(&mut self, state: &mut JTXState) -> Result<()> {
-        serde_json::to_writer(Write::by_ref(&mut self.channel), &value_for_state(state))
+    fn tx_finalize(&mut self, state: JTXState) -> Result<()> {
+        serde_json::to_writer(Write::by_ref(&mut self.channel), &value_for_state(&state))
             .map_err(convert_error)
     }
 
@@ -176,8 +176,8 @@ mod async_client {
             add_param(name, value, state)
         }
 
-        fn tx_finalize(&mut self, state: &mut JTXState) -> Result<FutureBytes> {
-            let j = serde_json::to_vec(&value_for_state(state))
+        fn tx_finalize(&mut self, state: JTXState) -> Result<FutureBytes> {
+            let j = serde_json::to_vec(&value_for_state(&state))
                 .map_err(convert_error)?;
             Ok((self.transact)(j))
         }

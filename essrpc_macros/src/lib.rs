@@ -245,6 +245,11 @@ fn get_result_types(result_type: &syn::ReturnType) -> Option<(syn::Type, syn::Ty
         if let syn::Type::Path(tp) = b.deref() {
             let result_seg: syn::PathSegment = (*tp.path.segments.last()?.value()).clone();
             if let syn::PathArguments::AngleBracketed(args) = result_seg.arguments {
+                if args.args.len() != 2 {
+                    panic!("Expected Result to have two type parameters, found {}: {}",
+                           args.args.len(),
+                          result_type.clone().into_token_stream())
+                }
                 let ok_type_generic = args.args.first()?.value().clone();
                 let err_type_generic = args.args.last()?.value().clone();
                 if let syn::GenericArgument::Type(ok_type) = ok_type_generic {

@@ -1,6 +1,7 @@
 use essrpc::{AsyncRPCClient, RPCError, RPCServer};
 use essrpc::essrpc;
-use essrpc::transports::{JSONAsyncClientTransport, JSONTransport, ReadWrite};
+use essrpc::transports::{BincodeTransport, BincodeAsyncClientTransport,
+                         JSONAsyncClientTransport, JSONTransport, ReadWrite};
 use futures::{future, Future};
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
@@ -59,6 +60,15 @@ fn basic_json() {
     }
 }
 
+#[test]
+fn basic_bincode() {
+    let foo = bincode_foo();
+    match foo.bar("the answer".to_string(), 42).wait() {
+        Ok(result) => assert_eq!("the answer is 42", result),
+        Err(e) => panic!("error: {:?}", e)
+    }
+}
+
 fn json_foo() -> impl FooAsync {
     let transact = |data: Vec<u8>| -> Box<Future<Item=Vec<u8>, Error=RPCError>> {
         Box::new(future::lazy(move || {
@@ -72,4 +82,19 @@ fn json_foo() -> impl FooAsync {
         }))
     };
     FooAsyncRPCClient::new(JSONAsyncClientTransport::new(transact))
+}
+
+fn bincode_foo() -> impl FooAsync {
+    let transact = |data: Vec<u8>| -> Box<Future<Item=Vec<u8>, Error=RPCError>> {
+        Box::new(future::lazy(move || {
+            let mut response = Vec::new();
+            let transport = BincodeTransport::new(ReadWrite::new(data.deref(), &mut response));
+            let mut serve = FooRPCServer::new(FooImpl::new(), transport);
+            match serve.serve_single_call() {
+                Ok(_) => future::ok(response),
+                Err(e) => future::err(e)
+            }
+        }))
+    };
+    FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(transact))
 }

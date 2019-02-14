@@ -7,6 +7,22 @@ use serde::{Serialize, Deserialize};
 use crate::{MethodId, PartialMethodId, Result, RPCError, RPCErrorKind,
             ClientTransport, ServerTransport};
 
+fn serialize(w: impl Write, value: impl Serialize) -> Result<()>{
+        bincode::serialize_into(w, &value)
+            .map_err(|e|
+                     RPCError::with_cause(
+                         RPCErrorKind::SerializationError, "bincode serialization failure", e))
+}
+
+fn deserialize<T>(r: impl Read) -> Result<T> where
+    for<'de> T: Deserialize<'de> {
+    
+    bincode::deserialize_from(r)
+        .map_err(|e| {
+            RPCError::with_cause(
+                RPCErrorKind::SerializationError, "bincode deserialization failure", e)})
+}
+
 /// Transport implementation using Bincode serialization. Can be used
 /// over any `Read+Write` channel (local socket, internet socket,
 /// pipe, etc). The present implementation is naive with regards to
@@ -27,20 +43,12 @@ impl <C: Read+Write> BincodeTransport<C> {
     }
 
     fn serialize(&mut self, value: impl Serialize) -> Result<()>{
-        bincode::serialize_into(Write::by_ref(&mut self.channel),
-                                &value)
-            .map_err(|e|
-                     RPCError::with_cause(
-                         RPCErrorKind::SerializationError, "bincode serialization failure", e))
+        serialize(Write::by_ref(&mut self.channel), value)
     }
 
     fn deserialize<T>(&mut self) -> Result<T> where
         for<'de> T: Deserialize<'de> {
-        bincode::deserialize_from(
-            Read::by_ref(&mut self.channel))
-            .map_err(|e| {
-                     RPCError::with_cause(
-                         RPCErrorKind::SerializationError, "bincode deserialization failure", e)})
+        deserialize(Read::by_ref(&mut self.channel))
     }
 }
 
@@ -85,3 +93,72 @@ impl <C: Read+Write> ServerTransport for BincodeTransport<C> {
         self.serialize(value)
     }
 }
+
+
+#[cfg(feature = "async_client")]
+mod async_client {
+    use super::*;
+    use crate::{AsyncClientTransport};
+    use futures::{future, Future};
+    use std::ops::Deref;
+    
+    type FutureBytes = Box<Future<Item=Vec<u8>, Error=RPCError>>;
+    
+    /// Like BincodeTransport except for use as AsyncClientTransport. 
+    pub struct BincodeAsyncClientTransport<F>
+    where
+        F: Fn(Vec<u8>) -> FutureBytes {
+        transact: F
+    }
+    
+    impl <F> BincodeAsyncClientTransport<F>
+    where
+        F: Fn(Vec<u8>) -> FutureBytes {
+        
+        /// Create an AsyncBincodeTransport. `transact` must be a
+        /// function which given the raw bytes to transmit to the server,
+        /// returns a future representing the raw bytes returned from the server.
+        pub fn new(transact: F) -> Self {
+            BincodeAsyncClientTransport{transact}
+        }
+    }
+
+    impl <F> AsyncClientTransport for BincodeAsyncClientTransport<F>
+    where
+        F: Fn(Vec<u8>) -> FutureBytes {
+        
+        type TXState = Vec<u8>;
+        type FinalState = FutureBytes;
+        
+        fn tx_begin_call(&mut self, method: MethodId) -> Result<Vec<u8>> {
+            let mut state = Vec::new();
+            serialize(&mut state, method.num)?;
+            Ok(state)
+        }
+
+        fn tx_add_param(&mut self, _name: &'static str, value: impl Serialize, state: &mut Vec<u8>) -> Result<()> {
+            serialize(state, value)
+        }
+
+        fn tx_finalize(&mut self, state: Vec<u8>) -> Result<FutureBytes> {
+            Ok((self.transact)(state))
+        }
+
+        fn rx_response<T>(&mut self, state: FutureBytes) -> Box<Future<Item=T, Error=RPCError>> where
+            for<'de> T: Deserialize<'de>,
+            T: 'static {
+
+            Box::new(state.and_then(|data: Vec<u8>| {
+                panic!("data len is {}", data.len());
+                let ret = deserialize(data.deref());
+                match ret {
+                    Ok(val) => future::result(val),
+                    Err(e) => future::err(e)
+                }
+            }))
+        }
+    }   
+}
+
+#[cfg(feature = "async_client")]
+pub use self::async_client::BincodeAsyncClientTransport;

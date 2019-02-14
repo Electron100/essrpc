@@ -6,6 +6,8 @@ use std::io::{Read, Write};
 mod bincode;
 #[cfg(feature = "bincode_transport")]
 pub use self::bincode::BincodeTransport;
+#[cfg(all(feature = "bincode_transport", feature = "async_client"))]
+pub use self::bincode::BincodeAsyncClientTransport;
 
 #[cfg(feature = "json_transport")]
 mod json;

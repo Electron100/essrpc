@@ -32,10 +32,6 @@ impl From<essrpc::RPCError> for TestError {
     }
 }
 
-fn generic2<T: fmt::Display>(msg: T) -> Result<String, TestError> {
-    Ok(format!("the message is {}", msg))
-}
-
 #[essrpc]
 pub trait Foo {
     fn bar(&self, a: String, b: i32) -> Result<String, TestError>;

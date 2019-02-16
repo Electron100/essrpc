@@ -275,7 +275,7 @@ impl GenericSerializableError {
             None => None,
             Some(ec) => Some(Box::new(GenericSerializableError::from_dyn(ec)))
         };
-        GenericSerializableError{description: e.to_string(), cause: cause}
+        GenericSerializableError{description: e.to_string(), cause}
     }
 
     /// Create a `GenericSerializableError` from a trait object. This
@@ -287,11 +287,12 @@ impl GenericSerializableError {
             None => None,
             Some(ec) => Some(Box::new(GenericSerializableError::from_dyn(ec)))
         };
-        GenericSerializableError{description: e.to_string(), cause: cause}
+        GenericSerializableError{description: e.to_string(), cause}
     }
 }
 impl std::error::Error for GenericSerializableError {
     fn source(&self) -> Option<&(std::error::Error + 'static)> {
+        #[allow(clippy::match_as_ref)] // clippy's suggestion doesn't compile
         match self.cause {
             Some(ref e) => Some(e),
             None => None
@@ -319,16 +320,16 @@ pub struct RPCError {
 impl RPCError {
     /// New error without a cause.
     pub fn new(kind: RPCErrorKind, msg: impl Into<String>) -> Self {
-        RPCError{kind: kind, msg: msg.into(), cause: None} 
+        RPCError{kind, msg: msg.into(), cause: None} 
     }
     
     /// New error with a cause. 
     pub fn with_cause(kind: RPCErrorKind, msg: impl Into<String>, cause: impl std::error::Error) -> Self {
-        RPCError{kind: kind, msg: msg.into(), cause: Some(Box::new(GenericSerializableError::new(cause)))} 
+        RPCError{kind, msg: msg.into(), cause: Some(Box::new(GenericSerializableError::new(cause)))} 
     }
 
     /// Get the cause of the error (if any).
-    pub fn cause<'a>(&'a self) -> Option<&'a GenericSerializableError> {
+    pub fn cause(&self) -> Option<&GenericSerializableError> {
         match self.cause {
             None => None,
             Some(ref e) => Some(&e)

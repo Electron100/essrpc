@@ -1,6 +1,9 @@
 //The quote macro can require a high recursion limit
 #![recursion_limit="256"]
 
+// Clippy's suggestions for these don't compile
+#![allow(clippy::explicit_counter_loop)]
+
 extern crate proc_macro;
 extern crate proc_macro2;
 extern crate quote;
@@ -112,20 +115,24 @@ fn make_ident_literal_str(ident: &Ident) -> LitStr {
 // True if has self param, false if has default implementation. Panics
 // if no self and no default.
 fn verify_self_param_or_unneeded(method: &TraitItemMethod) -> bool {
+    if has_self_param(method) {
+        return true
+    }
+    if method.default.is_some() {
+        // this method is not needed for the RPC client
+        return false
+    }
+    panic!("RPC trait method {:?} has no self param and no default implementation", method);
+}
+
+fn has_self_param(method: &TraitItemMethod) -> bool {
     let param_tokens = &method.sig.decl.inputs;
     let first = param_tokens.first();
-    if !first.is_some()
-        || (match first.unwrap().value() {
-            FnArg::SelfRef(_) => false,
-            _ => true
-        }) {
-            if method.default.is_some() {
-                // this method is not needed for the RPC client
-                return false
-            }
-            
-        }
-    return true;
+    first.is_some()
+        && (match first.unwrap().value() {
+            FnArg::SelfRef(_) => true,
+            _ => false
+        })
 }
 
 // Client method implementation for the call to tx_begin_call through
@@ -262,8 +269,10 @@ fn get_result_types(result_type: &syn::ReturnType) -> Option<(syn::Type, syn::Ty
                            args.args.len(),
                           result_type.clone().into_token_stream())
                 }
-                let ok_type_generic = args.args.first()?.value().clone();
-                let err_type_generic = args.args.last()?.value().clone();
+                let arg_first = args.args.first()?;
+                let ok_type_generic = arg_first.value();
+                let arg_last = args.args.last()?;
+                let err_type_generic = arg_last.value();
                 if let syn::GenericArgument::Type(ok_type) = ok_type_generic {
                     if let syn::GenericArgument::Type(err_type) = err_type_generic {
                         return Some((ok_type.clone(), err_type.clone()));

@@ -53,7 +53,7 @@
 //! the macro generates a new trait, suffixed with `Async` for which
 //! every method returns a boxed `Future` instead of a `Result`, with
 //! the same success and error types, and a type implementing
-//! `AsyncRPCServer`. For example,
+//! `AsyncRPCClient`. For example,
 //!
 //! ```ignore
 //! #[essrpc(async)]
@@ -65,7 +65,7 @@
 //! Would generate a `FooAsync` trait with a `bar` method returning
 //! `Box<Future<Item=String, Error=SomeError>>` and a
 //! `FooAsyncRPCClient` struct implementing both `FooAsync` and
-//! `AsyncRPCClient`.
+//! [AsyncRPCClient](trait.AsyncRPCClient.html).
 //! 
 
 // We do not do doctests on the examples above because with all the

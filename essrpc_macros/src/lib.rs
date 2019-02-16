@@ -15,6 +15,18 @@ use std::ops::Deref;
 use syn::parse_quote;
 use syn::{FnArg, ItemTrait, LitStr, Pat, TraitItem, TraitItemMethod};
 
+/// The main macro with does the magic. When applied to a trait `Foo`
+/// generates a `FooRPCClient` type implementing
+/// [RPCClient](../essrpc/trait.RPCClient.html) (and `Foo`).  as well as
+/// `FooRPCServer` implementing [RPCServer](../essrpc/trait.RPCServer.html).
+///
+/// For an asynchronous client, the argument `async` can be used
+/// (`#[essrpc(async)]`) to generate a `FooAsync` trait, which is like
+/// `Foo` except every method returns a boxed `Future` instead of a
+/// `Result` and a `FooAsyncRPCClient` type implementing `FooAsync`
+/// and [AsyncRPCClient](../essrpc/trait.AsyncRPCClient.html).
+///
+/// See the crate-level documentation for examples.
 #[proc_macro_attribute]
 pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
     // We don't handle any arguments today, perhaps we will in the future.

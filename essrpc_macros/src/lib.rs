@@ -1,6 +1,5 @@
 //The quote macro can require a high recursion limit
-#![recursion_limit="256"]
-
+#![recursion_limit = "256"]
 // Clippy's suggestions for these don't compile
 #![allow(clippy::explicit_counter_loop)]
 
@@ -10,7 +9,7 @@ extern crate quote;
 extern crate syn;
 
 use core::convert::AsRef;
-use proc_macro::{TokenStream};
+use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Ident, Span, TokenTree};
 use quote::{quote, ToTokens};
@@ -41,7 +40,7 @@ pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
             match ident.to_string().as_ref() {
                 "sync" => sync_client = true,
                 "async" => async_client = true,
-                _ => ()
+                _ => (),
             }
         }
     }
@@ -54,21 +53,25 @@ pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // TODO better error handling
     let ast_trait: ItemTrait = syn::parse(input).unwrap();
-    
+
     let trait_ident = ast_trait.ident;
 
     let mut methods: Vec<TraitItemMethod> = Vec::new();
-    
+
     // Look at each method
     for item in ast_trait.items {
         if let TraitItem::Method(m) = item {
-             methods.push(m.clone());
+            methods.push(m.clone());
         }
     }
 
     if async_client {
         result.extend(create_async_client_trait(&trait_ident, &methods));
-        result.extend(create_client(&async_client_trait_ident(&trait_ident), &methods, true));
+        result.extend(create_client(
+            &async_client_trait_ident(&trait_ident),
+            &methods,
+            true,
+        ));
     }
     if sync_client {
         result.extend(create_client(&trait_ident, &methods, false));
@@ -83,8 +86,14 @@ fn client_ident(trait_ident: &Ident) -> Ident {
 }
 
 fn client_transport_ident(async_client: bool) -> Ident {
-    Ident::new(if async_client {"AsyncClientTransport"} else {"ClientTransport"},
-               Span::call_site())
+    Ident::new(
+        if async_client {
+            "AsyncClientTransport"
+        } else {
+            "ClientTransport"
+        },
+        Span::call_site(),
+    )
 }
 
 fn async_client_trait_ident(trait_ident: &Ident) -> Ident {
@@ -92,8 +101,14 @@ fn async_client_trait_ident(trait_ident: &Ident) -> Ident {
 }
 
 fn rpcclient_ident(async_client: bool) -> Ident {
-    Ident::new(if async_client {"AsyncRPCClient"} else {"RPCClient"},
-               Span::call_site())
+    Ident::new(
+        if async_client {
+            "AsyncRPCClient"
+        } else {
+            "RPCClient"
+        },
+        Span::call_site(),
+    )
 }
 
 fn server_ident(trait_ident: &Ident) -> Ident {
@@ -103,7 +118,7 @@ fn server_ident(trait_ident: &Ident) -> Ident {
 fn make_pat_literal_str(pat: &Pat) -> LitStr {
     match pat {
         Pat::Ident(p) => make_ident_literal_str(&p.ident),
-        _ => panic!("Unhandled PAT type {:?}", pat)
+        _ => panic!("Unhandled PAT type {:?}", pat),
     }
 }
 
@@ -116,13 +131,16 @@ fn make_ident_literal_str(ident: &Ident) -> LitStr {
 // if no self and no default.
 fn verify_self_param_or_unneeded(method: &TraitItemMethod) -> bool {
     if has_self_param(method) {
-        return true
+        return true;
     }
     if method.default.is_some() {
         // this method is not needed for the RPC client
-        return false
+        return false;
     }
-    panic!("RPC trait method {:?} has no self param and no default implementation", method);
+    panic!(
+        "RPC trait method {:?} has no self param and no default implementation",
+        method
+    );
 }
 
 fn has_self_param(method: &TraitItemMethod) -> bool {
@@ -131,7 +149,7 @@ fn has_self_param(method: &TraitItemMethod) -> bool {
     first.is_some()
         && (match first.unwrap().value() {
             FnArg::SelfRef(_) => true,
-            _ => false
+            _ => false,
         })
 }
 
@@ -147,11 +165,10 @@ fn client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
         if let FnArg::Captured(arg) = p {
             let name = &arg.pat;
             let name_literal = make_pat_literal_str(name);
-            add_param_tokens.extend(
-                quote!(tr.tx_add_param(#name_literal, #name, &mut state)?;));
+            add_param_tokens.extend(quote!(tr.tx_add_param(#name_literal, #name, &mut state)?;));
         }
     }
-    
+
     let ident_literal = make_ident_literal_str(ident);
     quote!(
         let mut tr = self.tr.borrow_mut();
@@ -161,35 +178,34 @@ fn client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     )
 }
 
-
 fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
     let param_tokens = &method.sig.decl.inputs;
 
     if !verify_self_param_or_unneeded(method) {
-        return TokenStream2::new()
+        return TokenStream2::new();
     }
 
-    
     let rettype = match method.sig.decl.output {
-        syn::ReturnType::Default => panic!("RPC methods must have a return type, {} does not ", ident),
-        syn::ReturnType::Type(_arrow, ref t) => t
+        syn::ReturnType::Default => {
+            panic!("RPC methods must have a return type, {} does not ", ident)
+        }
+        syn::ReturnType::Type(_arrow, ref t) => t,
     };
 
     let tx_send = client_method_tx_send(method, id);
 
     quote!(
-        fn #ident(#param_tokens) -> #rettype {
-            #tx_send
-            let ret: std::result::Result<#rettype, essrpc::RPCError> =
-                tr.rx_response(state);
-            match ret {
-                Ok(v) => v,
-                Err(e) => Err(e.into())
-            }
-        })
+    fn #ident(#param_tokens) -> #rettype {
+        #tx_send
+        let ret: std::result::Result<#rettype, essrpc::RPCError> =
+            tr.rx_response(state);
+        match ret {
+            Ok(v) => v,
+            Err(e) => Err(e.into())
+        }
+    })
 }
-
 
 fn impl_async_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
@@ -204,26 +220,26 @@ fn impl_async_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let tx_send = client_method_tx_send(method, id);
 
     quote!(
-        fn #ident(#param_tokens) -> #rettype {
-            use futures::future::Future;
-            let send = || -> std::result::Result<TR::FinalState, #errtype> {
-                #tx_send
-                Ok(state)
-            };
-            match send() {
-                Err(e) => Box::new(futures::future::result(Err(e))),
-                Ok(state) => {
-                    let mut tr = self.tr.borrow_mut();
-                    Box::new(tr.rx_response(state).map_err(|e: essrpc::RPCError| e.into()))
-                }
+    fn #ident(#param_tokens) -> #rettype {
+        use futures::future::Future;
+        let send = || -> std::result::Result<TR::FinalState, #errtype> {
+            #tx_send
+            Ok(state)
+        };
+        match send() {
+            Err(e) => Box::new(futures::future::result(Err(e))),
+            Ok(state) => {
+                let mut tr = self.tr.borrow_mut();
+                Box::new(tr.rx_response(state).map_err(|e: essrpc::RPCError| e.into()))
             }
-        })
+        }
+    })
 }
 
 fn create_async_client_trait(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStream2 {
     let ident = async_client_trait_ident(trait_ident);
     let mut method_decl_tokens = TokenStream2::new();
-    
+
     for method in methods {
         let mut new_method = method.clone();
         let rettype = get_future_return_type(method);
@@ -240,20 +256,24 @@ fn create_async_client_trait(trait_ident: &Ident, methods: &[TraitItemMethod]) -
 
 fn get_future_return_type(method: &TraitItemMethod) -> syn::Type {
     match get_result_types(&method.sig.decl.output) {
-            Some((ok_type, err_type)) => {
-                parse_quote!(Box<futures::Future<Item=#ok_type, Error=#err_type>>)
-            }
-            None => panic!("return {} type is not of expected form Result<T, E>",
-                           method.sig.decl.output.clone().into_token_stream())
+        Some((ok_type, err_type)) => {
+            parse_quote!(Box<futures::Future<Item=#ok_type, Error=#err_type>>)
         }
+        None => panic!(
+            "return {} type is not of expected form Result<T, E>",
+            method.sig.decl.output.clone().into_token_stream()
+        ),
+    }
 }
 
 fn get_error_type(method: &TraitItemMethod) -> syn::Type {
     match get_result_types(&method.sig.decl.output) {
-            Some((_, err_type)) => err_type,
-            None => panic!("return {} type is not of expected form Result<T, E>",
-                           method.sig.decl.output.clone().into_token_stream())
-        }
+        Some((_, err_type)) => err_type,
+        None => panic!(
+            "return {} type is not of expected form Result<T, E>",
+            method.sig.decl.output.clone().into_token_stream()
+        ),
+    }
 }
 
 /// For a return type of the form Result<T, E>, figure out what T and E are.
@@ -265,9 +285,11 @@ fn get_result_types(result_type: &syn::ReturnType) -> Option<(syn::Type, syn::Ty
             let result_seg: syn::PathSegment = (*tp.path.segments.last()?.value()).clone();
             if let syn::PathArguments::AngleBracketed(args) = result_seg.arguments {
                 if args.args.len() != 2 {
-                    panic!("Expected Result to have two type parameters, found {}: {}",
-                           args.args.len(),
-                          result_type.clone().into_token_stream())
+                    panic!(
+                        "Expected Result to have two type parameters, found {}: {}",
+                        args.args.len(),
+                        result_type.clone().into_token_stream()
+                    )
                 }
                 let arg_first = args.args.first()?;
                 let ok_type_generic = arg_first.value();
@@ -284,7 +306,11 @@ fn get_result_types(result_type: &syn::ReturnType) -> Option<(syn::Type, syn::Ty
     None
 }
 
-fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod], async_client: bool) -> TokenStream2 {
+fn create_client(
+    trait_ident: &Ident,
+    methods: &[TraitItemMethod],
+    async_client: bool,
+) -> TokenStream2 {
     let client_ident = client_ident(trait_ident);
     let transport_ident = client_transport_ident(async_client);
     let rpcclient_ident = rpcclient_ident(async_client);
@@ -293,13 +319,11 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod], async_client:
 
     let mut mcnt = 0;
     for method in methods {
-        method_impl_tokens.extend(
-            if async_client {
-                impl_async_client_method(method, mcnt)
-            } else {
-                impl_client_method(method, mcnt)
-            }
-        );
+        method_impl_tokens.extend(if async_client {
+            impl_async_client_method(method, mcnt)
+        } else {
+            impl_client_method(method, mcnt)
+        });
         mcnt += 1;
     }
 
@@ -312,7 +336,7 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod], async_client:
             TR: essrpc::#transport_ident {
 
             type TR = TR;
-            
+
             fn new(transport: TR) -> Self {
                 #client_ident{tr: std::cell::RefCell::new(transport)}
             }
@@ -320,7 +344,7 @@ fn create_client(trait_ident: &Ident, methods: &[TraitItemMethod], async_client:
 
         impl <TR> #trait_ident for #client_ident<TR> where
             TR: essrpc::#transport_ident {
-            
+
             #method_impl_tokens
         }
     )
@@ -339,12 +363,12 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
         server_by_name_matches.extend(quote!(#ident_literal => #mcnt,));
         mcnt += 1;
     }
-    
+
     quote!(
         pub struct #server_ident<T, TR> where
             T: #trait_ident,
             TR: essrpc::ServerTransport {
-            
+
             tr: TR,
             imp: T
         }
@@ -364,7 +388,7 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
                     _ => std::u32::MAX
                 }
             }
-            
+
         }
 
         impl <TR, T> essrpc::RPCServer for #server_ident<T, TR> where
@@ -396,14 +420,15 @@ fn create_server_match(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let mut param_retrieve_tokens = TokenStream2::new();
     let mut param_call_tokens = TokenStream2::new();
     let mut first = true;
-    
+
     for p in param_tokens.iter() {
         if let FnArg::Captured(arg) = p {
             let name = &arg.pat;
             let name_literal = make_pat_literal_str(name);
             let ty = &arg.ty;
             param_retrieve_tokens.extend(
-                quote!(let #name: #ty = self.tr.rx_read_param(#name_literal, &mut rxstate)?;));
+                quote!(let #name: #ty = self.tr.rx_read_param(#name_literal, &mut rxstate)?;),
+            );
             if first {
                 first = false;
             } else {

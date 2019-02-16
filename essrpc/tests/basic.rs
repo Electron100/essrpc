@@ -4,18 +4,18 @@ extern crate serde_derive;
 
 use std::fmt;
 use std::os::unix::net::UnixStream;
-use std::thread;
 use std::result::Result;
+use std::thread;
 
 use serde_derive::{Deserialize, Serialize};
 
-use essrpc::{RPCClient, RPCServer};
-use essrpc::transports::{BincodeTransport, JSONTransport};
 use essrpc::essrpc;
+use essrpc::transports::{BincodeTransport, JSONTransport};
+use essrpc::{RPCClient, RPCServer};
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct TestError{
-    msg: String
+pub struct TestError {
+    msg: String,
 }
 
 impl fmt::Display for TestError {
@@ -24,11 +24,12 @@ impl fmt::Display for TestError {
     }
 }
 
-impl std::error::Error for TestError {
-}
+impl std::error::Error for TestError {}
 impl From<essrpc::RPCError> for TestError {
     fn from(error: essrpc::RPCError) -> Self {
-        TestError{msg: format!("{}", error)}
+        TestError {
+            msg: format!("{}", error),
+        }
     }
 }
 
@@ -42,7 +43,7 @@ struct FooImpl;
 
 impl FooImpl {
     fn new() -> Self {
-        FooImpl{}
+        FooImpl {}
     }
 }
 
@@ -51,7 +52,9 @@ impl Foo for FooImpl {
         Ok(format!("{} is {}", a, b))
     }
     fn expect_error(&self) -> Result<String, TestError> {
-        Err(TestError{msg: "iamerror".to_string()})
+        Err(TestError {
+            msg: "iamerror".to_string(),
+        })
     }
 }
 
@@ -60,7 +63,7 @@ fn basic_bincode() {
     let foo = bincode_foo();
     match foo.bar("the answer".to_string(), 42) {
         Ok(result) => assert_eq!("the answer is 42", result),
-        Err(e) => panic!("error: {:?}", e)
+        Err(e) => panic!("error: {:?}", e),
     }
 }
 
@@ -69,7 +72,7 @@ fn basic_json() {
     let foo = json_foo();
     match foo.bar("the answer".to_string(), 42) {
         Ok(result) => assert_eq!("the answer is 42", result),
-        Err(e) => panic!("error: {:?}", e)
+        Err(e) => panic!("error: {:?}", e),
     }
 }
 
@@ -78,7 +81,7 @@ fn propagates_error() {
     let foo = json_foo();
     match foo.expect_error() {
         Ok(_) => panic!("Should have generated an error"),
-        Err(e) => assert_eq!(&e.msg, "iamerror")
+        Err(e) => assert_eq!(&e.msg, "iamerror"),
     }
 }
 
@@ -92,11 +95,11 @@ fn serve_multiple() {
     let foo = FooRPCClient::new(BincodeTransport::new(s1));
     match foo.bar("the answer".to_string(), 42) {
         Ok(result) => assert_eq!("the answer is 42", result),
-        Err(e) => panic!("error: {:?}", e)
+        Err(e) => panic!("error: {:?}", e),
     }
     match foo.bar("the answer".to_string(), 43) {
         Ok(result) => assert_eq!("the answer is 43", result),
-        Err(e) => panic!("error: {:?}", e)
+        Err(e) => panic!("error: {:?}", e),
     }
 }
 

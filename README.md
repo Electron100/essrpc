@@ -20,11 +20,15 @@ be applied to any trait whose functions each meet the following conditions:
 Please [see the documentation](https://docs.rs/essrpc) for examples and more details.
 
 # Status
-Early alpha. Things are expected to work, but no real world usage has occurred.
+Alpha. Things are expected to work, but little real world usage has occurred.
 
 # Configurable Features
++ `async_client`: Enables [asynchronous clients](https://docs.rs/essrpc/0.2.0/essrpc/#asynchronous-clients)
 + `bincode_transport`: Enables [BincodeTransport](https://docs.rs/essrpc/0.1.1/essrpc/transports/struct.BincodeTransport.html)
 + `json_transport`: Enables [JSONTransport](https://docs.rs/essrpc/0.1.1/essrpc/transports/struct.JSONTransport.html)
++ `wasm_bindgen`: Enables wasm-bindgen compatibility. Specifically,
+  UUID generation in the JSON transport uses wasm-bindgen compatible
+  randomness.
 
 # Inspirations and Motivations
 ESSRPC was inspired by **[tarpc](https://github.com/google/tarpc)** and by the `build_rpc_trait!` macro

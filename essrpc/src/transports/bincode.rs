@@ -149,7 +149,6 @@ mod async_client {
             T: 'static {
 
             Box::new(state.and_then(|data: Vec<u8>| {
-                panic!("data len is {}", data.len());
                 let ret = deserialize(data.deref());
                 match ret {
                     Ok(val) => future::result(val),

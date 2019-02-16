@@ -7,7 +7,7 @@ calls as transparently as possible through calls to ordinary trait
 methods.
 
 +  Allows ordinary calls to trait methods to call an implementation across an RPC boundary (in another process, across the network, etc)
-+  Is agnostic to the 
++  Is agnostic to the underlying transport used.
 +  Uses only stable Rust.
 
 The magic is performed by the `essrpc` attribute macro which may

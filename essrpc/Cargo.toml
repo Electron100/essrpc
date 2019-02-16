@@ -14,6 +14,7 @@ documentation = "https://docs.rs/essrpc/"
 bincode_transport = ["bincode"]
 json_transport = ["serde_json", "uuid"]
 async_client = ["futures"]
+wasm_bindgen = ["uuid/wasm-bindgen"]
 
 [dependencies]
 futures = { version = "0.1", optional=true }

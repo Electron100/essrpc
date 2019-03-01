@@ -41,11 +41,11 @@ pub struct BincodeTransport<C: Read + Write> {
 
 impl<C: Read + Write> BincodeTransport<C> {
     pub fn new(channel: C) -> Self {
-        BincodeTransport { channel: channel }
+        BincodeTransport { channel }
     }
 
     /// Get the underlying read/write channel
-    pub fn channel<'a>(&'a self) -> &'a C {
+    pub fn channel(&self) -> &C {
         &self.channel
     }
 

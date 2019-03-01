@@ -27,16 +27,16 @@ pub struct JSONTransport<C: Read + Write> {
 
 impl<C: Read + Write> JSONTransport<C> {
     pub fn new(channel: C) -> Self {
-        JSONTransport { channel: channel }
+        JSONTransport { channel }
     }
 
     /// Get the underlying read/write channel
-    pub fn channel<'a>(&'a self) -> &'a C {
+    pub fn channel(&self) -> &C {
         &self.channel
     }
 
     // Deserialize a value from the channel
-    fn from_channel<T>(&mut self) -> Result<T>
+    fn read_from_channel<T>(&mut self) -> Result<T>
     where
         for<'de> T: serde::Deserialize<'de>,
     {
@@ -69,7 +69,7 @@ impl<C: Read + Write> ClientTransport for JSONTransport<C> {
     where
         for<'de> T: Deserialize<'de>,
     {
-        self.from_channel()
+        self.read_from_channel()
     }
 }
 
@@ -119,18 +119,22 @@ impl<C: Read + Write> ServerTransport for JSONTransport<C> {
     type RXState = JRXState;
 
     fn rx_begin_call(&mut self) -> Result<(PartialMethodId, JRXState)> {
-        let value: Value = self.from_channel()?;
+        let value: Value = self.read_from_channel()?;
         let method = value
             .get("method")
-            .ok_or(RPCError::new(
-                RPCErrorKind::SerializationError,
-                "json is not expected object",
-            ))?
+            .ok_or_else(|| {
+                RPCError::new(
+                    RPCErrorKind::SerializationError,
+                    "json is not expected object",
+                )
+            })?
             .as_str()
-            .ok_or(RPCError::new(
-                RPCErrorKind::SerializationError,
-                "json method was not string",
-            ))?
+            .ok_or_else(|| {
+                RPCError::new(
+                    RPCErrorKind::SerializationError,
+                    "json method was not string",
+                )
+            })?
             .to_string();
         Ok((PartialMethodId::Name(method), JRXState { json: value }))
     }
@@ -142,16 +146,20 @@ impl<C: Read + Write> ServerTransport for JSONTransport<C> {
         let param_val = state
             .json
             .get("params")
-            .ok_or(RPCError::new(
-                RPCErrorKind::SerializationError,
-                "json is not expected object",
-            ))?
+            .ok_or_else(|| {
+                RPCError::new(
+                    RPCErrorKind::SerializationError,
+                    "json is not expected object",
+                )
+            })?
             .get(name)
-            .ok_or(RPCError::new(
-                RPCErrorKind::SerializationError,
-                format!("parameters do not contain {}", name),
-            ))?;
-        return serde_json::from_value(param_val.clone()).map_err(convert_error);
+            .ok_or_else(|| {
+                RPCError::new(
+                    RPCErrorKind::SerializationError,
+                    format!("parameters do not contain {}", name),
+                )
+            })?;
+        serde_json::from_value(param_val.clone()).map_err(convert_error)
     }
 
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {

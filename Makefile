@@ -11,6 +11,6 @@ doc :
 	cargo doc --all-features
 
 check :
-	cargo clippy
+	cargo clippy --all-features -- -D warnings
 	cargo test  --all-features
 

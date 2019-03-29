@@ -1,3 +1,4 @@
+use std::io;
 use std::io::{Read, Write};
 
 use bincode;
@@ -22,6 +23,14 @@ where
     for<'de> T: Deserialize<'de>,
 {
     bincode::deserialize_from(r).map_err(|e| {
+        if let bincode::ErrorKind::Io(e) = e.as_ref() {
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                return RPCError::new(
+                    RPCErrorKind::TransportEOF,
+                    "EOF during bincode deserialization",
+                );
+            }
+        }
         RPCError::with_cause(
             RPCErrorKind::SerializationError,
             "bincode deserialization failure",

@@ -73,12 +73,13 @@ impl<C: Read + Write> ClientTransport for JSONTransport<C> {
     }
 }
 
-fn convert_error(e: impl std::error::Error) -> RPCError {
-    RPCError::with_cause(
+fn convert_error(_e: impl std::error::Error) -> RPCError {
+    panic!("error");
+    /*RPCError::with_cause(
         RPCErrorKind::SerializationError,
         "json serialization or deserialization failed",
         e,
-    )
+    )*/
 }
 
 fn begin_call(method: MethodId) -> JTXState {
@@ -112,7 +113,17 @@ where
 {
     let read = serde_json::de::IoRead::new(reader);
     let mut de = serde_json::de::Deserializer::new(read);
-    serde::de::Deserialize::deserialize(&mut de).map_err(convert_error)
+    serde::de::Deserialize::deserialize(&mut de).map_err(|e| {
+        println!("classification {:?}", e.classify());
+        if e.classify() == serde_json::error::Category::Eof {
+            RPCError::new(
+                RPCErrorKind::TransportEOF,
+                "EOF during json deserialization",
+            )
+        } else {
+            convert_error(e)
+        }
+    })
 }
 
 impl<C: Read + Write> ServerTransport for JSONTransport<C> {

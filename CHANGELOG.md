@@ -1,3 +1,7 @@
+## vNEXT (unreleased)
+ * Add RPCErrorKind::TransportEOF, intended to be used by a Transport
+   when a client disconnects (likely detected through reading an EOF)
+
 ## 0.2
  * Add support for an async client returning futures
  * Split transport into `ClientTransport`, `AsyncClientTransport`, and `ServerTransport`

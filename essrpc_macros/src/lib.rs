@@ -17,7 +17,7 @@ use std::ops::Deref;
 use syn::parse_quote;
 use syn::{FnArg, ItemTrait, LitStr, Pat, TraitItem, TraitItemMethod};
 
-/// The main macro with does the magic. When applied to a trait `Foo`
+/// The main macro which does the magic. When applied to a trait `Foo`
 /// generates a `FooRPCClient` type implementing
 /// [RPCClient](../essrpc/trait.RPCClient.html) (and `Foo`).  as well as
 /// `FooRPCServer` implementing [RPCServer](../essrpc/trait.RPCServer.html).
@@ -31,7 +31,6 @@ use syn::{FnArg, ItemTrait, LitStr, Pat, TraitItem, TraitItemMethod};
 /// See the crate-level documentation for examples.
 #[proc_macro_attribute]
 pub fn essrpc(args: TokenStream, input: TokenStream) -> TokenStream {
-    // We don't handle any arguments today, perhaps we will in the future.
     let args: TokenStream2 = args.into();
     let mut sync_client = false;
     let mut async_client = false;

@@ -74,7 +74,7 @@ fn basic_bincode() {
 }
 
 fn json_foo() -> impl FooAsync {
-    let transact = |data: Vec<u8>| -> Box<Future<Item = Vec<u8>, Error = RPCError>> {
+    let transact = |data: Vec<u8>| -> Box<dyn Future<Item = Vec<u8>, Error = RPCError>> {
         Box::new(future::lazy(move || {
             let mut response = Vec::new();
             let transport = JSONTransport::new(ReadWrite::new(data.deref(), &mut response));
@@ -89,7 +89,7 @@ fn json_foo() -> impl FooAsync {
 }
 
 fn bincode_foo() -> impl FooAsync {
-    let transact = |data: Vec<u8>| -> Box<Future<Item = Vec<u8>, Error = RPCError>> {
+    let transact = |data: Vec<u8>| -> Box<dyn Future<Item = Vec<u8>, Error = RPCError>> {
         Box::new(future::lazy(move || {
             let mut response = Vec::new();
             let transport = BincodeTransport::new(ReadWrite::new(data.deref(), &mut response));

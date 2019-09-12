@@ -184,7 +184,7 @@ mod async_client {
     use futures::{future, Future};
     use std::ops::Deref;
 
-    type FutureBytes = Box<Future<Item = Vec<u8>, Error = RPCError>>;
+    type FutureBytes = Box<dyn Future<Item = Vec<u8>, Error = RPCError>>;
 
     /// Like JSONTransport except for use as AsyncClientTransport.
     pub struct JSONAsyncClientTransport<F>
@@ -231,7 +231,10 @@ mod async_client {
             Ok((self.transact)(j))
         }
 
-        fn rx_response<T>(&mut self, state: FutureBytes) -> Box<Future<Item = T, Error = RPCError>>
+        fn rx_response<T>(
+            &mut self,
+            state: FutureBytes,
+        ) -> Box<dyn Future<Item = T, Error = RPCError>>
         where
             for<'de> T: Deserialize<'de>,
             T: 'static,

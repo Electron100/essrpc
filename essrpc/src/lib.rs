@@ -186,7 +186,7 @@ pub trait AsyncClientTransport {
     fn rx_response<T>(
         &mut self,
         state: Self::FinalState,
-    ) -> Box<futures::Future<Item = T, Error = RPCError>>
+    ) -> Box<dyn futures::Future<Item = T, Error = RPCError>>
     where
         for<'de> T: Deserialize<'de>,
         T: 'static;
@@ -309,7 +309,7 @@ impl GenericSerializableError {
     }
 }
 impl std::error::Error for GenericSerializableError {
-    fn source(&self) -> Option<&(std::error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         #[allow(clippy::match_as_ref)] // clippy's suggestion doesn't compile
         match self.cause {
             Some(ref e) => Some(e),

@@ -1,4 +1,4 @@
-## vNEXT (unreleased)
+## 0.2.1
  * Add RPCErrorKind::TransportEOF, intended to be used by a Transport
    when a client disconnects (likely detected through reading an EOF)
 

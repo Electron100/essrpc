@@ -73,13 +73,12 @@ impl<C: Read + Write> ClientTransport for JSONTransport<C> {
     }
 }
 
-fn convert_error(_e: impl std::error::Error) -> RPCError {
-    panic!("error");
-    /*RPCError::with_cause(
+fn convert_error(e: impl std::error::Error) -> RPCError {
+    RPCError::with_cause(
         RPCErrorKind::SerializationError,
         "json serialization or deserialization failed",
         e,
-    )*/
+    )
 }
 
 fn begin_call(method: MethodId) -> JTXState {

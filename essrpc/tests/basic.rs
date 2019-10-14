@@ -1,13 +1,12 @@
 extern crate essrpc;
 extern crate serde;
-extern crate serde_derive;
 
 use std::fmt;
 use std::os::unix::net::UnixStream;
 use std::result::Result;
 use std::thread;
 
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use essrpc::essrpc;
 use essrpc::transports::{BincodeTransport, JSONTransport};

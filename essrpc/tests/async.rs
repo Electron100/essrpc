@@ -5,7 +5,7 @@ use essrpc::transports::{
 };
 use essrpc::{AsyncRPCClient, RPCError, RPCServer};
 use futures::{future, Future};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
 use std::result::Result;

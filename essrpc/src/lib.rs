@@ -71,6 +71,9 @@
 // We do not do doctests on the examples above because with all the
 // macros and generated code, it is simply too much effort to get things working.
 
+// type_repetitation_in_bounds appears to be getting false positives and it's suggestions don't compile
+#![allow(clippy::type_repetition_in_bounds)]
+
 extern crate essrpc_macros;
 
 // We would like to mark as #[doc(inline)] and define the
@@ -80,7 +83,6 @@ pub use essrpc_macros::essrpc;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
-use serde_derive::{Deserialize, Serialize};
 
 pub mod transports;
 

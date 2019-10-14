@@ -1,3 +1,6 @@
+## 0.2.2
+ * Fix serde derive dependency: Use derive feature of serde crate.
+
 ## 0.2.1
  * Add RPCErrorKind::TransportEOF, intended to be used by a Transport
    when a client disconnects (likely detected through reading an EOF)

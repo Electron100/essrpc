@@ -153,7 +153,7 @@ fn client42<T: Foo>(client: &T) {
 }
 
 fn json_foo() -> impl Foo {
-    let (s1, s2) = UnixStream::pair().unwrap();;
+    let (s1, s2) = UnixStream::pair().unwrap();
     thread::spawn(move || {
         let mut serve = FooRPCServer::new(FooImpl::new(), JSONTransport::new(s2));
         serve.serve_single_call()

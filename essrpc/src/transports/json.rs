@@ -180,11 +180,10 @@ impl<C: Read + Write> ServerTransport for JSONTransport<C> {
 #[cfg(feature = "async_client")]
 mod async_client {
     use super::*;
-    use crate::AsyncClientTransport;
-    use futures::{future, Future};
+    use crate::{AsyncClientTransport, BoxFuture, FutureBytes};
     use std::ops::Deref;
-
-    type FutureBytes = Box<dyn Future<Item = Vec<u8>, Error = RPCError>>;
+    use futures::TryFutureExt;
+    use futures::FutureExt;
 
     /// Like JSONTransport except for use as AsyncClientTransport.
     pub struct JSONAsyncClientTransport<F>
@@ -234,18 +233,17 @@ mod async_client {
         fn rx_response<T>(
             &mut self,
             state: FutureBytes,
-        ) -> Box<dyn Future<Item = T, Error = RPCError>>
+        ) -> BoxFuture<T, RPCError>
         where
             for<'de> T: Deserialize<'de>,
             T: 'static,
         {
-            Box::new(state.and_then(|data: Vec<u8>| {
-                let ret = read_value_from_json(data.deref());
-                match ret {
-                    Ok(val) => future::result(val),
-                    Err(e) => future::err(e),
-                }
-            }))
+            println!("rx response");
+            state.and_then(|data| async move {
+                println!("json is {}", std::str::from_utf8(data.deref()).unwrap());
+                println!("result type is {}", std::any::type_name::<T>());
+                read_value_from_json(data.deref())
+            }).boxed_local()
         }
     }
 }

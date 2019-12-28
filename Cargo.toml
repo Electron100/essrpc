@@ -3,4 +3,5 @@
 members = [
  "essrpc",
  "essrpc_macros",
+ "example"
 ]

@@ -1,3 +1,5 @@
+## 0.3 UNRELEASED
+  * Upgrade to futures-rs 0.3 and std::Future
 ## 0.2.2
  * Fix serde derive dependency: Use derive feature of serde crate.
 

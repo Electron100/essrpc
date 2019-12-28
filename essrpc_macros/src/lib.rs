@@ -15,7 +15,10 @@ use proc_macro2::{Ident, Span, TokenTree};
 use quote::{quote, ToTokens};
 use std::ops::Deref;
 use syn::parse_quote;
-use syn::{FnArg, ItemTrait, LitStr, Pat, TraitItem, TraitItemMethod};
+use syn::{
+    punctuated::Punctuated, token::Comma, /*spanned::Spanned,*/ FnArg, ItemTrait, LitStr, Pat,
+    TraitItem, TraitItemMethod,
+};
 
 /// The main macro which does the magic. When applied to a trait `Foo`
 /// generates a `FooRPCClient` type implementing
@@ -185,12 +188,7 @@ fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
         return TokenStream2::new();
     }
 
-    let rettype = match method.sig.decl.output {
-        syn::ReturnType::Default => {
-            panic!("RPC methods must have a return type, {} does not ", ident)
-        }
-        syn::ReturnType::Type(_arrow, ref t) => t,
-    };
+    let rettype = get_return_type(method);
 
     let tx_send = client_method_tx_send(method, id);
 
@@ -206,68 +204,82 @@ fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     })
 }
 
+fn get_return_type(method: &TraitItemMethod) -> &syn::Type {
+    match method.sig.decl.output {
+        syn::ReturnType::Default => panic!(
+            "RPC methods must have a return type, {} does not ",
+            &method.sig.ident
+        ),
+        syn::ReturnType::Type(_arrow, ref t) => t,
+    }
+}
+
+fn param_tokens_after_this(method: &TraitItemMethod) -> Punctuated<FnArg, Comma> {
+    method
+        .sig
+        .decl
+        .inputs
+        .clone()
+        .into_pairs()
+        .skip(1)
+        .collect()
+}
+
 fn impl_async_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
-    let param_tokens = &method.sig.decl.inputs;
+
+    // get the parameters without the &self as we want to add a lifetime to that
+    let param_tokens = param_tokens_after_this(method);
 
     if !verify_self_param_or_unneeded(method) {
         return TokenStream2::new();
     }
 
+    let orig_rettype = get_return_type(method);
     let rettype = get_future_return_type(method);
-    let errtype = get_error_type(method);
     let tx_send = client_method_tx_send(method, id);
 
     quote!(
-    fn #ident(#param_tokens) -> #rettype {
-        use futures::future::Future;
-        let send = || -> std::result::Result<TR::FinalState, #errtype> {
+    fn #ident<'a>(&'a self, #param_tokens) -> #rettype {
+        use std::future::Future;
+        use futures;
+        use futures::FutureExt;
+        use futures::TryFutureExt;
+        futures::future::lazy(move |_| {
             #tx_send
             Ok(state)
-        };
-        match send() {
-            Err(e) => Box::new(futures::future::result(Err(e))),
-            Ok(state) => {
-                let mut tr = self.tr.borrow_mut();
-                Box::new(tr.rx_response(state).map_err(|e: essrpc::RPCError| e.into()))
-            }
-        }
+        }).and_then(move |state| -> essrpc::BoxFuture<#orig_rettype, essrpc::RPCError> {
+            self.tr.borrow_mut().rx_response(state)
+        }).map_err(|e: essrpc::RPCError| e.into())
+            .and_then(|ret| futures::future::ready(ret))
+            .boxed_local()
     })
 }
 
 fn create_async_client_trait(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStream2 {
     let ident = async_client_trait_ident(trait_ident);
-    let mut method_decl_tokens = TokenStream2::new();
+    let mut method_decls: Vec<TokenStream2> = Vec::new();
 
     for method in methods {
-        let mut new_method = method.clone();
         let rettype = get_future_return_type(method);
-        new_method.sig.decl.output = parse_quote!(-> #rettype);
-        new_method.to_tokens(&mut method_decl_tokens);
+        let ident = &method.sig.ident;
+        let param_tokens = param_tokens_after_this(method);
+        method_decls.push(quote!(
+            fn #ident<'a>(&'a self, #param_tokens) -> #rettype;));
     }
 
     quote!(
         pub trait #ident {
-           #method_decl_tokens
+           #(#method_decls)*
         }
     )
 }
 
 fn get_future_return_type(method: &TraitItemMethod) -> syn::Type {
     match get_result_types(&method.sig.decl.output) {
-        Some((ok_type, err_type)) => {
-            parse_quote!(Box<futures::Future<Item=#ok_type, Error=#err_type>>)
-        }
-        None => panic!(
-            "return {} type is not of expected form Result<T, E>",
-            method.sig.decl.output.clone().into_token_stream()
+        Some((ok_type, err_type)) => parse_quote!(
+            std::pin::Pin<Box<dyn std::future::Future<Output = std::result::Result<#ok_type, #err_type>> + 'a>>
         ),
-    }
-}
-
-fn get_error_type(method: &TraitItemMethod) -> syn::Type {
-    match get_result_types(&method.sig.decl.output) {
-        Some((_, err_type)) => err_type,
         None => panic!(
             "return {} type is not of expected form Result<T, E>",
             method.sig.decl.output.clone().into_token_stream()

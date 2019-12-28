@@ -81,6 +81,8 @@ extern crate essrpc_macros;
 pub use essrpc_macros::essrpc;
 
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
 
@@ -185,10 +187,7 @@ pub trait AsyncClientTransport {
     /// Read the return value of a method call. Always called after
     /// `tx_finalize`. `state` is the object returned by
     /// `tx_finalize`.
-    fn rx_response<T>(
-        &mut self,
-        state: Self::FinalState,
-    ) -> Box<dyn futures::Future<Item = T, Error = RPCError>>
+    fn rx_response<T>(&mut self, state: Self::FinalState) -> BoxFuture<T, RPCError>
     where
         for<'de> T: Deserialize<'de>,
         T: 'static;
@@ -400,3 +399,8 @@ pub enum RPCErrorKind {
     /// Other error.
     Other,
 }
+
+#[cfg(feature = "async_client")]
+pub type BoxFuture<T, E> = Pin<Box<dyn Future<Output = std::result::Result<T, E>>>>;
+#[cfg(feature = "async_client")]
+type FutureBytes = BoxFuture<Vec<u8>, RPCError>;

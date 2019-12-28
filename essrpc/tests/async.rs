@@ -3,12 +3,15 @@ use essrpc::transports::{
     BincodeAsyncClientTransport, BincodeTransport, JSONAsyncClientTransport, JSONTransport,
     ReadWrite,
 };
-use essrpc::{AsyncRPCClient, RPCError, RPCServer};
-use futures::{future, Future};
+use essrpc::{AsyncRPCClient, BoxFuture, RPCError, RPCServer};
+use futures::FutureExt;
+use futures::{executor::block_on, future};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
 use std::result::Result;
+
+type FutureBytes = BoxFuture<Vec<u8>, RPCError>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TestError {
@@ -58,7 +61,7 @@ impl Foo for FooImpl {
 #[test]
 fn basic_json() {
     let foo = json_foo();
-    match foo.bar("the answer".to_string(), 42).wait() {
+    match block_on(foo.bar("the answer".to_string(), 42)) {
         Ok(result) => assert_eq!("the answer is 42", result),
         Err(e) => panic!("error: {:?}", e),
     }
@@ -67,38 +70,36 @@ fn basic_json() {
 #[test]
 fn basic_bincode() {
     let foo = bincode_foo();
-    match foo.bar("the answer".to_string(), 42).wait() {
+    match block_on(foo.bar("the answer".to_string(), 42)) {
         Ok(result) => assert_eq!("the answer is 42", result),
         Err(e) => panic!("error: {:?}", e),
     }
 }
 
 fn json_foo() -> impl FooAsync {
-    let transact = |data: Vec<u8>| -> Box<dyn Future<Item = Vec<u8>, Error = RPCError>> {
-        Box::new(future::lazy(move || {
+    let transact = |data: Vec<u8>| -> BoxFuture<Vec<u8>, RPCError> {
+        future::lazy(move |_| -> Result<Vec<u8>, RPCError> {
             let mut response = Vec::new();
             let transport = JSONTransport::new(ReadWrite::new(data.deref(), &mut response));
             let mut serve = FooRPCServer::new(FooImpl::new(), transport);
-            match serve.serve_single_call() {
-                Ok(_) => future::ok(response),
-                Err(e) => future::err(e),
-            }
-        }))
+            serve.serve_single_call()?;
+            Ok(response)
+        })
+        .boxed()
     };
     FooAsyncRPCClient::new(JSONAsyncClientTransport::new(transact))
 }
 
 fn bincode_foo() -> impl FooAsync {
-    let transact = |data: Vec<u8>| -> Box<dyn Future<Item = Vec<u8>, Error = RPCError>> {
-        Box::new(future::lazy(move || {
+    let transact = |data: Vec<u8>| -> FutureBytes {
+        future::lazy(move |_| {
             let mut response = Vec::new();
             let transport = BincodeTransport::new(ReadWrite::new(data.deref(), &mut response));
             let mut serve = FooRPCServer::new(FooImpl::new(), transport);
-            match serve.serve_single_call() {
-                Ok(_) => future::ok(response),
-                Err(e) => future::err(e),
-            }
-        }))
+            serve.serve_single_call()?;
+            Ok(response)
+        })
+        .boxed()
     };
     FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(transact))
 }

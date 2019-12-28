@@ -121,11 +121,10 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
 #[cfg(feature = "async_client")]
 mod async_client {
     use super::*;
-    use crate::AsyncClientTransport;
-    use futures::{future, Future};
+    use crate::{AsyncClientTransport, BoxFuture, FutureBytes};
     use std::ops::Deref;
-
-    type FutureBytes = Box<dyn Future<Item = Vec<u8>, Error = RPCError>>;
+    use futures::future::FutureExt;
+    use futures::TryFutureExt;
 
     /// Like BincodeTransport except for use as AsyncClientTransport.
     pub struct BincodeAsyncClientTransport<F>
@@ -173,21 +172,14 @@ mod async_client {
             Ok((self.transact)(state))
         }
 
-        fn rx_response<T>(
-            &mut self,
-            state: FutureBytes,
-        ) -> Box<dyn Future<Item = T, Error = RPCError>>
+        fn rx_response<T>(&mut self, state: FutureBytes) -> BoxFuture<T, RPCError>
         where
             for<'de> T: Deserialize<'de>,
             T: 'static,
         {
-            Box::new(state.and_then(|data: Vec<u8>| {
-                let ret = deserialize(data.deref());
-                match ret {
-                    Ok(val) => future::result(val),
-                    Err(e) => future::err(e),
-                }
-            }))
+            state.and_then(|data| async move {
+                deserialize(data.deref())
+            }).boxed_local()
         }
     }
 }

@@ -146,11 +146,11 @@ fn verify_self_param_or_unneeded(method: &TraitItemMethod) -> bool {
 }
 
 fn has_self_param(method: &TraitItemMethod) -> bool {
-    let param_tokens = &method.sig.decl.inputs;
+    let param_tokens = &method.sig.inputs;
     let first = param_tokens.first();
     first.is_some()
-        && (match first.unwrap().value() {
-            FnArg::SelfRef(_) => true,
+        && (match first.unwrap() {
+            FnArg::Receiver(_) => true,
             _ => false,
         })
 }
@@ -159,12 +159,12 @@ fn has_self_param(method: &TraitItemMethod) -> bool {
 // tx_finalize. This portion is shared between sync and async.
 fn client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
-    let param_tokens = &method.sig.decl.inputs;
+    let param_tokens = &method.sig.inputs;
 
     let mut add_param_tokens = TokenStream2::new();
 
     for p in param_tokens.iter() {
-        if let FnArg::Captured(arg) = p {
+        if let FnArg::Typed(arg) = p {
             let name = &arg.pat;
             let name_literal = make_pat_literal_str(name);
             add_param_tokens.extend(quote!(tr.tx_add_param(#name_literal, #name, &mut state)?;));
@@ -182,7 +182,7 @@ fn client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
 
 fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
-    let param_tokens = &method.sig.decl.inputs;
+    let param_tokens = &method.sig.inputs;
 
     if !verify_self_param_or_unneeded(method) {
         return TokenStream2::new();
@@ -205,7 +205,7 @@ fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
 }
 
 fn get_return_type(method: &TraitItemMethod) -> &syn::Type {
-    match method.sig.decl.output {
+    match method.sig.output {
         syn::ReturnType::Default => panic!(
             "RPC methods must have a return type, {} does not ",
             &method.sig.ident
@@ -215,14 +215,7 @@ fn get_return_type(method: &TraitItemMethod) -> &syn::Type {
 }
 
 fn param_tokens_after_this(method: &TraitItemMethod) -> Punctuated<FnArg, Comma> {
-    method
-        .sig
-        .decl
-        .inputs
-        .clone()
-        .into_pairs()
-        .skip(1)
-        .collect()
+    method.sig.inputs.clone().into_pairs().skip(1).collect()
 }
 
 fn impl_async_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
@@ -243,8 +236,8 @@ fn impl_async_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     fn #ident<'a>(&'a self, #param_tokens) -> #rettype {
         use std::future::Future;
         use futures;
-        use futures::FutureExt;
-        use futures::TryFutureExt;
+        use futures::future::FutureExt;
+        use futures::future::TryFutureExt;
         futures::future::lazy(move |_| {
             #tx_send
             Ok(state)
@@ -276,13 +269,13 @@ fn create_async_client_trait(trait_ident: &Ident, methods: &[TraitItemMethod]) -
 }
 
 fn get_future_return_type(method: &TraitItemMethod) -> syn::Type {
-    match get_result_types(&method.sig.decl.output) {
+    match get_result_types(&method.sig.output) {
         Some((ok_type, err_type)) => parse_quote!(
             std::pin::Pin<Box<dyn std::future::Future<Output = std::result::Result<#ok_type, #err_type>> + 'a>>
         ),
         None => panic!(
             "return {} type is not of expected form Result<T, E>",
-            method.sig.decl.output.clone().into_token_stream()
+            method.sig.output.clone().into_token_stream()
         ),
     }
 }
@@ -293,7 +286,7 @@ fn get_result_types(result_type: &syn::ReturnType) -> Option<(syn::Type, syn::Ty
     // nesting instead of early return
     if let syn::ReturnType::Type(_, b) = result_type {
         if let syn::Type::Path(tp) = b.deref() {
-            let result_seg: syn::PathSegment = (*tp.path.segments.last()?.value()).clone();
+            let result_seg: syn::PathSegment = (*tp.path.segments.last()?).clone();
             if let syn::PathArguments::AngleBracketed(args) = result_seg.arguments {
                 if args.args.len() != 2 {
                     panic!(
@@ -302,10 +295,8 @@ fn get_result_types(result_type: &syn::ReturnType) -> Option<(syn::Type, syn::Ty
                         result_type.clone().into_token_stream()
                     )
                 }
-                let arg_first = args.args.first()?;
-                let ok_type_generic = arg_first.value();
-                let arg_last = args.args.last()?;
-                let err_type_generic = arg_last.value();
+                let ok_type_generic = args.args.first()?;
+                let err_type_generic = args.args.last()?;
                 if let syn::GenericArgument::Type(ok_type) = ok_type_generic {
                     if let syn::GenericArgument::Type(err_type) = err_type_generic {
                         return Some((ok_type.clone(), err_type.clone()));
@@ -426,14 +417,14 @@ fn create_server(trait_ident: &Ident, methods: &[TraitItemMethod]) -> TokenStrea
 
 fn create_server_match(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
-    let param_tokens = &method.sig.decl.inputs;
+    let param_tokens = &method.sig.inputs;
 
     let mut param_retrieve_tokens = TokenStream2::new();
     let mut param_call_tokens = TokenStream2::new();
     let mut first = true;
 
     for p in param_tokens.iter() {
-        if let FnArg::Captured(arg) = p {
+        if let FnArg::Typed(arg) = p {
             let name = &arg.pat;
             let name_literal = make_pat_literal_str(name);
             let ty = &arg.ty;

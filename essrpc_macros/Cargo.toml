@@ -7,9 +7,9 @@ description = "Macros for ESSRPC. Do not use this crate directly -- use the essr
 license = "MIT"
 
 [dependencies]
-proc-macro2 = "0.4"
-quote = "0.6.0"
-syn = { version = "0.15.0", features = ["full", "extra-traits"] }
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "1.0", features = ["full", "extra-traits"] }
 
 [lib]
 proc-macro = true

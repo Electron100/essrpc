@@ -1,5 +1,6 @@
 ## 0.3 UNRELEASED
   * Upgrade to futures-rs 0.3 and std::Future
+  * Upgrade proc-macro2/syn/quote to 1.0
 ## 0.2.2
  * Fix serde derive dependency: Use derive feature of serde crate.
 

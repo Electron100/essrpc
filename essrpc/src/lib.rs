@@ -400,7 +400,6 @@ pub enum RPCErrorKind {
     Other,
 }
 
+/// Type returned by async transport methods. A pinned dynamic-dispatch future.
 #[cfg(feature = "async_client")]
 pub type BoxFuture<T, E> = Pin<Box<dyn Future<Output = std::result::Result<T, E>>>>;
-#[cfg(feature = "async_client")]
-type FutureBytes = BoxFuture<Vec<u8>, RPCError>;

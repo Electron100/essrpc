@@ -3,15 +3,12 @@ use essrpc::transports::{
     BincodeAsyncClientTransport, BincodeTransport, JSONAsyncClientTransport, JSONTransport,
     ReadWrite,
 };
-use essrpc::{AsyncRPCClient, BoxFuture, RPCError, RPCServer};
-use futures::FutureExt;
-use futures::{executor::block_on, future};
+use essrpc::{AsyncRPCClient, RPCError, RPCServer};
+use futures::{executor::block_on};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
 use std::result::Result;
-
-type FutureBytes = BoxFuture<Vec<u8>, RPCError>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TestError {
@@ -76,30 +73,26 @@ fn basic_bincode() {
     }
 }
 
+async fn json_transact(data: Vec<u8>) -> Result<Vec<u8>, RPCError> {
+		let mut response = Vec::new();
+    let transport = JSONTransport::new(ReadWrite::new(data.deref(), &mut response));
+    let mut serve = FooRPCServer::new(FooImpl::new(), transport);
+    serve.serve_single_call()?;
+    Ok(response)
+}
+
 fn json_foo() -> impl FooAsync {
-    let transact = |data: Vec<u8>| -> BoxFuture<Vec<u8>, RPCError> {
-        future::lazy(move |_| -> Result<Vec<u8>, RPCError> {
-            let mut response = Vec::new();
-            let transport = JSONTransport::new(ReadWrite::new(data.deref(), &mut response));
-            let mut serve = FooRPCServer::new(FooImpl::new(), transport);
-            serve.serve_single_call()?;
-            Ok(response)
-        })
-        .boxed()
-    };
-    FooAsyncRPCClient::new(JSONAsyncClientTransport::new(transact))
+    FooAsyncRPCClient::new(JSONAsyncClientTransport::new(json_transact))
+}
+
+async fn bincode_transact(data: Vec<u8>) -> Result<Vec<u8>, RPCError> {
+		let mut response = Vec::new();
+    let transport = BincodeTransport::new(ReadWrite::new(data.deref(), &mut response));
+    let mut serve = FooRPCServer::new(FooImpl::new(), transport);
+    serve.serve_single_call()?;
+    Ok(response)
 }
 
 fn bincode_foo() -> impl FooAsync {
-    let transact = |data: Vec<u8>| -> FutureBytes {
-        future::lazy(move |_| {
-            let mut response = Vec::new();
-            let transport = BincodeTransport::new(ReadWrite::new(data.deref(), &mut response));
-            let mut serve = FooRPCServer::new(FooImpl::new(), transport);
-            serve.serve_single_call()?;
-            Ok(response)
-        })
-        .boxed()
-    };
-    FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(transact))
+    FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(bincode_transact))
 }

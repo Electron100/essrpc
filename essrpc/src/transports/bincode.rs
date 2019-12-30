@@ -121,22 +121,26 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
 #[cfg(feature = "async_client")]
 mod async_client {
     use super::*;
-    use crate::{AsyncClientTransport, BoxFuture, FutureBytes};
+    use crate::{AsyncClientTransport, BoxFuture};
     use std::ops::Deref;
-    use futures::future::FutureExt;
+    use futures::{Future, FutureExt};
     use futures::TryFutureExt;
 
+    type FutureBytes = BoxFuture<Vec<u8>, RPCError>;
+
     /// Like BincodeTransport except for use as AsyncClientTransport.
-    pub struct BincodeAsyncClientTransport<F>
+    pub struct BincodeAsyncClientTransport<F, FT>
     where
-        F: Fn(Vec<u8>) -> FutureBytes,
+        F: Fn(Vec<u8>) -> FT,
+				FT: Future<Output = Result<Vec<u8>>>
     {
         transact: F,
     }
 
-    impl<F> BincodeAsyncClientTransport<F>
+    impl<F, FT> BincodeAsyncClientTransport<F, FT>
     where
-        F: Fn(Vec<u8>) -> FutureBytes,
+        F: Fn(Vec<u8>) -> FT,
+				FT: Future<Output = Result<Vec<u8>>>
     {
         /// Create an AsyncBincodeTransport. `transact` must be a
         /// function which given the raw bytes to transmit to the server,
@@ -146,9 +150,10 @@ mod async_client {
         }
     }
 
-    impl<F> AsyncClientTransport for BincodeAsyncClientTransport<F>
+    impl<F, FT> AsyncClientTransport for BincodeAsyncClientTransport<F, FT>
     where
-        F: Fn(Vec<u8>) -> FutureBytes,
+        F: Fn(Vec<u8>) -> FT,
+				FT: Future<Output = Result<Vec<u8>>> + 'static
     {
         type TXState = Vec<u8>;
         type FinalState = FutureBytes;
@@ -169,7 +174,7 @@ mod async_client {
         }
 
         fn tx_finalize(&mut self, state: Vec<u8>) -> Result<FutureBytes> {
-            Ok((self.transact)(state))
+            Ok((self.transact)(state).boxed_local())
         }
 
         fn rx_response<T>(&mut self, state: FutureBytes) -> BoxFuture<T, RPCError>

@@ -180,22 +180,25 @@ impl<C: Read + Write> ServerTransport for JSONTransport<C> {
 #[cfg(feature = "async_client")]
 mod async_client {
     use super::*;
-    use crate::{AsyncClientTransport, BoxFuture, FutureBytes};
+    use crate::{AsyncClientTransport, BoxFuture};
     use std::ops::Deref;
-    use futures::TryFutureExt;
-    use futures::FutureExt;
+    use futures::{Future, TryFutureExt, FutureExt};
 
-    /// Like JSONTransport except for use as AsyncClientTransport.
-    pub struct JSONAsyncClientTransport<F>
+		type FutureBytes = BoxFuture<Vec<u8>, RPCError>;
+		
+		/// Like JSONTransport except for use as AsyncClientTransport.
+    pub struct JSONAsyncClientTransport<F, FT>
     where
-        F: Fn(Vec<u8>) -> FutureBytes,
+        F: Fn(Vec<u8>) -> FT,
+				FT: Future<Output = Result<Vec<u8>>>
     {
         transact: F,
     }
 
-    impl<F> JSONAsyncClientTransport<F>
+    impl<F, FT> JSONAsyncClientTransport<F, FT>
     where
-        F: Fn(Vec<u8>) -> FutureBytes,
+				F: Fn(Vec<u8>) -> FT,
+				FT: Future<Output = Result<Vec<u8>>>
     {
         /// Create an AsyncJSONTransport. `transact` must be a
         /// function which given the raw bytes to transmit to the server,
@@ -205,9 +208,10 @@ mod async_client {
         }
     }
 
-    impl<F> AsyncClientTransport for JSONAsyncClientTransport<F>
+    impl<F, FT> AsyncClientTransport for JSONAsyncClientTransport<F, FT>
     where
-        F: Fn(Vec<u8>) -> FutureBytes,
+				F: Fn(Vec<u8>) -> FT,
+				FT: Future<Output = Result<Vec<u8>>> + 'static
     {
         type TXState = JTXState;
         type FinalState = FutureBytes;
@@ -227,7 +231,7 @@ mod async_client {
 
         fn tx_finalize(&mut self, state: JTXState) -> Result<FutureBytes> {
             let j = serde_json::to_vec(&value_for_state(&state)).map_err(convert_error)?;
-            Ok((self.transact)(j))
+            Ok((self.transact)(j).boxed_local())
         }
 
         fn rx_response<T>(

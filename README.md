@@ -20,7 +20,7 @@ be applied to any trait whose functions each meet the following conditions:
 Please [see the documentation](https://docs.rs/essrpc) for examples and more details.
 
 # Status
-Alpha. Things are expected to work, but little real world usage has occurred.
+Alpha. Things are expected to work, but only a small amount of real world usage has occurred.
 
 # Configurable Features
 + `async_client`: Enables [asynchronous clients](https://docs.rs/essrpc/0.2.0/essrpc/#asynchronous-clients)

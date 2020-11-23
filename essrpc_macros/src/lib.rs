@@ -195,12 +195,8 @@ fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     quote!(
     fn #ident(#param_tokens) -> #rettype {
         #tx_send
-        let ret: std::result::Result<#rettype, essrpc::RPCError> =
-            tr.rx_response(state);
-        match ret {
-            Ok(v) => v,
-            Err(e) => Err(e.into())
-        }
+        let ret: #rettype = tr.rx_response(state);
+        ret.map_err(|e| e.into())
     })
 }
 

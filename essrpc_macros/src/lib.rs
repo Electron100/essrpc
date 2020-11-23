@@ -148,11 +148,7 @@ fn verify_self_param_or_unneeded(method: &TraitItemMethod) -> bool {
 fn has_self_param(method: &TraitItemMethod) -> bool {
     let param_tokens = &method.sig.inputs;
     let first = param_tokens.first();
-    first.is_some()
-        && (match first.unwrap() {
-            FnArg::Receiver(_) => true,
-            _ => false,
-        })
+    first.is_some() && (matches!(first.unwrap(), FnArg::Receiver(_)))
 }
 
 // Client method implementation for the call to tx_begin_call through

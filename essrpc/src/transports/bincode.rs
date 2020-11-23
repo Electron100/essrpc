@@ -1,7 +1,6 @@
 use std::io;
 use std::io::{Read, Write};
 
-use bincode;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -122,9 +121,9 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
 mod async_client {
     use super::*;
     use crate::{AsyncClientTransport, BoxFuture};
-    use std::ops::Deref;
-    use futures::{Future, FutureExt};
     use futures::TryFutureExt;
+    use futures::{Future, FutureExt};
+    use std::ops::Deref;
 
     type FutureBytes = BoxFuture<Vec<u8>, RPCError>;
 
@@ -132,7 +131,7 @@ mod async_client {
     pub struct BincodeAsyncClientTransport<F, FT>
     where
         F: Fn(Vec<u8>) -> FT,
-				FT: Future<Output = Result<Vec<u8>>>
+        FT: Future<Output = Result<Vec<u8>>>,
     {
         transact: F,
     }
@@ -140,7 +139,7 @@ mod async_client {
     impl<F, FT> BincodeAsyncClientTransport<F, FT>
     where
         F: Fn(Vec<u8>) -> FT,
-				FT: Future<Output = Result<Vec<u8>>>
+        FT: Future<Output = Result<Vec<u8>>>,
     {
         /// Create an AsyncBincodeTransport. `transact` must be a
         /// function which given the raw bytes to transmit to the server,
@@ -153,7 +152,7 @@ mod async_client {
     impl<F, FT> AsyncClientTransport for BincodeAsyncClientTransport<F, FT>
     where
         F: Fn(Vec<u8>) -> FT,
-				FT: Future<Output = Result<Vec<u8>>> + 'static
+        FT: Future<Output = Result<Vec<u8>>> + 'static,
     {
         type TXState = Vec<u8>;
         type FinalState = FutureBytes;
@@ -182,9 +181,9 @@ mod async_client {
             for<'de> T: Deserialize<'de>,
             T: 'static,
         {
-            state.and_then(|data| async move {
-                deserialize(data.deref())
-            }).boxed_local()
+            state
+                .and_then(|data| async move { deserialize(data.deref()) })
+                .boxed_local()
         }
     }
 }

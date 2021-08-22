@@ -113,7 +113,9 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
     }
 
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {
-        self.serialize(value)
+        let res = self.serialize(value);
+        self.channel.flush();
+        res
     }
 }
 

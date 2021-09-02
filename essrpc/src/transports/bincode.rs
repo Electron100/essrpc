@@ -67,6 +67,16 @@ impl<C: Read + Write> BincodeTransport<C> {
     {
         deserialize(Read::by_ref(&mut self.channel))
     }
+
+    fn flush(&mut self) -> Result<()> {
+        self.channel.flush().map_err(|e| {
+            RPCError::with_cause(
+                RPCErrorKind::SerializationError,
+                "cannot flush underlying channel",
+                e,
+            )
+        })
+    }
 }
 
 impl<C: Read + Write> ClientTransport for BincodeTransport<C> {
@@ -87,6 +97,7 @@ impl<C: Read + Write> ClientTransport for BincodeTransport<C> {
     }
 
     fn tx_finalize(&mut self, _state: ()) -> Result<()> {
+        self.flush()?;
         Ok(())
     }
 
@@ -114,7 +125,7 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
 
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {
         let res = self.serialize(value);
-        self.channel.flush();
+        self.flush()?;
         res
     }
 }

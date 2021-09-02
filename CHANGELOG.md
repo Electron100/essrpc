@@ -1,3 +1,5 @@
+## 0.3.1
+  * Bincode and JSON transports flush the underlying channel when transmitting
 ## 0.3
   * Upgrade to futures-rs 0.3 and std::Future
   * Upgrade proc-macro2/syn/quote to 1.0

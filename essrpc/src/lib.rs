@@ -284,10 +284,9 @@ pub struct GenericSerializableError {
 }
 impl GenericSerializableError {
     pub fn new(e: impl std::error::Error) -> Self {
-        let cause = match e.source() {
-            None => None,
-            Some(ec) => Some(Box::new(GenericSerializableError::from_dyn(ec))),
-        };
+        let cause = e
+            .source()
+            .map(|ec| Box::new(GenericSerializableError::from_dyn(ec)));
         GenericSerializableError {
             description: e.to_string(),
             cause,
@@ -299,10 +298,9 @@ impl GenericSerializableError {
     /// `GenericSerializableError`), but the specific type and
     /// backtrace of the error are lost.
     pub fn from_dyn(e: &dyn std::error::Error) -> Self {
-        let cause = match e.source() {
-            None => None,
-            Some(ec) => Some(Box::new(GenericSerializableError::from_dyn(ec))),
-        };
+        let cause = e
+            .source()
+            .map(|ec| Box::new(GenericSerializableError::from_dyn(ec)));
         GenericSerializableError {
             description: e.to_string(),
             cause,
@@ -361,10 +359,7 @@ impl RPCError {
 
     /// Get the cause of the error (if any).
     pub fn cause(&self) -> Option<&GenericSerializableError> {
-        match self.cause {
-            None => None,
-            Some(ref e) => Some(&e),
-        }
+        self.cause.as_ref().map(|boxed_e| boxed_e.as_ref())
     }
 }
 

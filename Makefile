@@ -3,6 +3,7 @@ all : build
 
 build :
 	cargo build
+	cargo build --all-features
 
 clean :
 	cargo clean

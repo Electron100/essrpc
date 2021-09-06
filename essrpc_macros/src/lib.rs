@@ -12,9 +12,7 @@ use core::convert::AsRef;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Ident, Span, TokenTree};
-use quote::{quote, ToTokens};
-use std::ops::Deref;
-use syn::parse_quote;
+use quote::quote;
 use syn::{
     punctuated::Punctuated, token::Comma, /*spanned::Spanned,*/ FnArg, ItemTrait, LitStr, Pat,
     TraitItem, TraitItemMethod,
@@ -176,6 +174,30 @@ fn client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     )
 }
 
+fn async_client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
+    let ident = &method.sig.ident;
+    let param_tokens = &method.sig.inputs;
+
+    let mut add_param_tokens = TokenStream2::new();
+
+    for p in param_tokens.iter() {
+        if let FnArg::Typed(arg) = p {
+            let name = &arg.pat;
+            let name_literal = make_pat_literal_str(name);
+            add_param_tokens.extend(
+                quote!(self.tr.borrow_mut().tx_add_param(#name_literal, #name, &mut state).await?;),
+            );
+        }
+    }
+
+    let ident_literal = make_ident_literal_str(ident);
+    quote!(
+        let mut state = self.tr.borrow_mut().tx_begin_call(essrpc::MethodId{name: #ident_literal, num: #id}).await?;
+        #add_param_tokens
+        let state = self.tr.borrow_mut().tx_finalize(state).await?;
+    )
+}
+
 fn impl_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let ident = &method.sig.ident;
     let param_tokens = &method.sig.inputs;
@@ -224,24 +246,14 @@ fn impl_async_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
         return TokenStream2::new();
     }
 
-    let orig_rettype = get_return_type(method);
-    let rettype = get_future_return_type(method);
-    let tx_send = client_method_tx_send(method, id);
+    let rettype = get_return_type(method);
+    let tx_send = async_client_method_tx_send(method, id);
 
     quote!(
-    fn #ident<'a>(&'a self, #param_tokens) -> #rettype {
-        use std::future::Future;
-        use futures;
-        use futures::future::FutureExt;
-        use futures::future::TryFutureExt;
-        futures::future::lazy(move |_| {
-            #tx_send
-            Ok(state)
-        }).and_then(move |state| -> essrpc::BoxFuture<#orig_rettype, essrpc::RPCError> {
-            self.tr.borrow_mut().rx_response(state)
-        }).map_err(|e: essrpc::RPCError| e.into())
-            .and_then(|ret| futures::future::ready(ret))
-            .boxed_local()
+    async fn #ident<'a>(&'a self, #param_tokens) -> #rettype {
+        #tx_send
+        let ret = self.tr.borrow_mut().rx_response(state).await?;
+        ret
     })
 }
 
@@ -250,58 +262,20 @@ fn create_async_client_trait(trait_ident: &Ident, methods: &[TraitItemMethod]) -
     let mut method_decls: Vec<TokenStream2> = Vec::new();
 
     for method in methods {
-        let rettype = get_future_return_type(method);
+        let rettype = get_return_type(method);
         let ident = &method.sig.ident;
         let param_tokens = param_tokens_after_this(method);
         method_decls.push(quote!(
-            fn #ident<'a>(&'a self, #param_tokens) -> #rettype;));
+        async fn #ident<'a>(&'a self, #param_tokens) -> #rettype;
+            ));
     }
 
     quote!(
+        #[essrpc::internal::rpc_async_trait(?Send)]
         pub trait #ident {
            #(#method_decls)*
         }
     )
-}
-
-fn get_future_return_type(method: &TraitItemMethod) -> syn::Type {
-    match get_result_types(&method.sig.output) {
-        Some((ok_type, err_type)) => parse_quote!(
-            std::pin::Pin<Box<dyn std::future::Future<Output = std::result::Result<#ok_type, #err_type>> + 'a>>
-        ),
-        None => panic!(
-            "return {} type is not of expected form Result<T, E>",
-            method.sig.output.clone().into_token_stream()
-        ),
-    }
-}
-
-/// For a return type of the form Result<T, E>, figure out what T and E are.
-fn get_result_types(result_type: &syn::ReturnType) -> Option<(syn::Type, syn::Type)> {
-    // unfortunately, there's no "if not let", meaning we end up with
-    // nesting instead of early return
-    if let syn::ReturnType::Type(_, b) = result_type {
-        if let syn::Type::Path(tp) = b.deref() {
-            let result_seg: syn::PathSegment = (*tp.path.segments.last()?).clone();
-            if let syn::PathArguments::AngleBracketed(args) = result_seg.arguments {
-                if args.args.len() != 2 {
-                    panic!(
-                        "Expected Result to have two type parameters, found {}: {}",
-                        args.args.len(),
-                        result_type.clone().into_token_stream()
-                    )
-                }
-                let ok_type_generic = args.args.first()?;
-                let err_type_generic = args.args.last()?;
-                if let syn::GenericArgument::Type(ok_type) = ok_type_generic {
-                    if let syn::GenericArgument::Type(err_type) = err_type_generic {
-                        return Some((ok_type.clone(), err_type.clone()));
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 fn create_client(
@@ -325,6 +299,12 @@ fn create_client(
         mcnt += 1;
     }
 
+    let impl_attrs = if async_client {
+        Some(quote!(#[essrpc::internal::rpc_async_trait(?Send)]))
+    } else {
+        None
+    };
+
     quote!(
         pub struct #client_ident<TR: essrpc::#transport_ident> {
             tr: std::cell::RefCell<TR>,
@@ -340,6 +320,7 @@ fn create_client(
             }
         }
 
+        #impl_attrs
         impl <TR> #trait_ident for #client_ident<TR> where
             TR: essrpc::#transport_ident {
 

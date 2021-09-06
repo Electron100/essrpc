@@ -81,10 +81,15 @@ extern crate essrpc_macros;
 pub use essrpc_macros::essrpc;
 
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "async_client")]
+use async_trait::async_trait;
+#[cfg(feature = "async_client")]
+use std::future::Future;
+#[cfg(feature = "async_client")]
+use std::pin::Pin;
 
 pub mod transports;
 
@@ -153,6 +158,7 @@ pub trait ClientTransport {
 }
 
 #[cfg(feature = "async_client")]
+#[async_trait]
 /// Trait for RPC transport (client) to be used with asynchronous clients
 pub trait AsyncClientTransport {
     /// Type of transport-internal state used when bulding a call for
@@ -165,29 +171,30 @@ pub trait AsyncClientTransport {
 
     /// Begin calling the given method. The transport may begin transmitting over the wire,
     /// or it may may wait until the call to `tx_finalize`.
-    fn tx_begin_call(&mut self, method: MethodId) -> Result<Self::TXState>;
+    async fn tx_begin_call(&mut self, method: MethodId) -> Result<Self::TXState>;
     /// Add a parameter to a method call started with
     /// `tx_begin_call`. This method is guaranteed to be called only
     /// after `tx_begin_call` and to be called appropriately for each
     /// parameter of the method passed to `tx_begin_call`.  `state` is
     /// the object returned by `tx_begin_call`. Parameters are always
     /// added and read in order, so transmitting the name is not a requirement.
-    fn tx_add_param(
+    async fn tx_add_param(
         &mut self,
         name: &'static str,
-        value: impl Serialize,
+        value: impl Serialize + Send + 'async_trait,
         state: &mut Self::TXState,
     ) -> Result<()>;
+
     /// Finalize transmission of a method call. Called only after
     /// `tx_begin_call` and appropriate calls to `tx_add_param`. If
     /// the transport has not yet transmitted the method identifier
     /// and parameters over the wire, it should do so at this time.
-    fn tx_finalize(&mut self, state: Self::TXState) -> Result<Self::FinalState>;
+    async fn tx_finalize(&mut self, state: Self::TXState) -> Result<Self::FinalState>;
 
     /// Read the return value of a method call. Always called after
     /// `tx_finalize`. `state` is the object returned by
     /// `tx_finalize`.
-    fn rx_response<T>(&mut self, state: Self::FinalState) -> BoxFuture<T, RPCError>
+    async fn rx_response<T>(&mut self, state: Self::FinalState) -> Result<T>
     where
         for<'de> T: Deserialize<'de>,
         T: 'static;
@@ -374,6 +381,12 @@ impl fmt::Display for RPCError {
 
 impl std::error::Error for RPCError {}
 
+impl From<std::io::Error> for RPCError {
+    fn from(e: std::io::Error) -> RPCError {
+        RPCError::with_cause(RPCErrorKind::TransportError, "IO error in transport", e)
+    }
+}
+
 /// Types of [RPCError](trait.RPCError.html)
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub enum RPCErrorKind {
@@ -398,3 +411,8 @@ pub enum RPCErrorKind {
 /// Type returned by async transport methods. A pinned dynamic-dispatch future.
 #[cfg(feature = "async_client")]
 pub type BoxFuture<T, E> = Pin<Box<dyn Future<Output = std::result::Result<T, E>>>>;
+
+pub mod internal {
+    #[cfg(feature = "async_client")]
+    pub use async_trait::async_trait as rpc_async_trait;
+}

@@ -1,8 +1,8 @@
-use std::io::{Read, Write};
-
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::value::Value;
+use std::io::{Read, Write};
 use uuid::Uuid;
 
 use crate::{
@@ -194,73 +194,57 @@ impl<C: Read + Write> ServerTransport for JSONTransport<C> {
 #[cfg(feature = "async_client")]
 mod async_client {
     use super::*;
-    use crate::{AsyncClientTransport, BoxFuture};
-    use futures::{Future, FutureExt, TryFutureExt};
-    use std::ops::Deref;
-
-    type FutureBytes = BoxFuture<Vec<u8>, RPCError>;
+    use crate::AsyncClientTransport;
+    use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
     /// Like JSONTransport except for use as AsyncClientTransport.
-    pub struct JSONAsyncClientTransport<F, FT>
-    where
-        F: Fn(Vec<u8>) -> FT,
-        FT: Future<Output = Result<Vec<u8>>>,
-    {
-        transact: F,
+    pub struct JSONAsyncClientTransport<C: AsyncRead + AsyncWrite> {
+        channel: C,
     }
 
-    impl<F, FT> JSONAsyncClientTransport<F, FT>
-    where
-        F: Fn(Vec<u8>) -> FT,
-        FT: Future<Output = Result<Vec<u8>>>,
-    {
-        /// Create an AsyncJSONTransport. `transact` must be a
-        /// function which given the raw bytes to transmit to the server,
-        /// returns a future representing the raw bytes returned from the server.
-        pub fn new(transact: F) -> Self {
-            JSONAsyncClientTransport { transact }
+    impl<C: AsyncRead + AsyncWrite> JSONAsyncClientTransport<C> {
+        /// Create an AsyncJSONTransport.
+        pub fn new(channel: C) -> Self {
+            JSONAsyncClientTransport { channel }
         }
     }
 
-    impl<F, FT> AsyncClientTransport for JSONAsyncClientTransport<F, FT>
-    where
-        F: Fn(Vec<u8>) -> FT,
-        FT: Future<Output = Result<Vec<u8>>> + 'static,
+    #[async_trait]
+    impl<C: AsyncRead + AsyncWrite + Send + Unpin> AsyncClientTransport
+        for JSONAsyncClientTransport<C>
     {
         type TXState = JTXState;
-        type FinalState = FutureBytes;
+        type FinalState = ();
 
-        fn tx_begin_call(&mut self, method: MethodId) -> Result<JTXState> {
+        async fn tx_begin_call(&mut self, method: MethodId) -> Result<JTXState> {
             Ok(begin_call(method))
         }
 
-        fn tx_add_param(
+        async fn tx_add_param(
             &mut self,
             name: &'static str,
-            value: impl Serialize,
+            value: impl Serialize + Send + 'async_trait,
             state: &mut JTXState,
         ) -> Result<()> {
             add_param(name, value, state)
         }
 
-        fn tx_finalize(&mut self, state: JTXState) -> Result<FutureBytes> {
+        async fn tx_finalize(&mut self, state: JTXState) -> Result<()> {
             let j = serde_json::to_vec(&value_for_state(&state)).map_err(convert_error)?;
-            Ok((self.transact)(j).boxed_local())
+            self.channel.write(&j).await?;
+            self.channel.flush().await?;
+            Ok(())
         }
 
-        fn rx_response<T>(&mut self, state: FutureBytes) -> BoxFuture<T, RPCError>
+        async fn rx_response<T>(&mut self, _state: ()) -> Result<T>
         where
             for<'de> T: Deserialize<'de>,
-            T: 'static,
         {
             println!("rx response");
-            state
-                .and_then(|data| async move {
-                    println!("json is {}", std::str::from_utf8(data.deref()).unwrap());
-                    println!("result type is {}", std::any::type_name::<T>());
-                    read_value_from_json(data.deref())
-                })
-                .boxed_local()
+            // TODO address limitations
+            let mut data = [0u8; 1024];
+            self.channel.read(&mut data).await?;
+            read_value_from_json(&data as &[u8])
         }
     }
 }

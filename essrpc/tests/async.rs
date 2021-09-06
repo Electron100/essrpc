@@ -1,14 +1,13 @@
 use essrpc::essrpc;
 use essrpc::transports::{
     BincodeAsyncClientTransport, BincodeTransport, JSONAsyncClientTransport, JSONTransport,
-    ReadWrite,
 };
-use essrpc::{AsyncRPCClient, RPCError, RPCServer};
-use futures::{executor::block_on};
+use essrpc::{AsyncRPCClient, RPCServer};
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::ops::Deref;
 use std::result::Result;
+use std::{fmt, thread};
+use tokio;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TestError {
@@ -55,44 +54,44 @@ impl Foo for FooImpl {
     }
 }
 
-#[test]
-fn basic_json() {
+#[tokio::test]
+async fn basic_json_async() {
     let foo = json_foo();
-    match block_on(foo.bar("the answer".to_string(), 42)) {
+    match foo.bar("the answer".to_string(), 42).await {
         Ok(result) => assert_eq!("the answer is 42", result),
         Err(e) => panic!("error: {:?}", e),
     }
 }
 
-#[test]
-fn basic_bincode() {
+#[tokio::test]
+async fn basic_bincode_async() {
     let foo = bincode_foo();
-    match block_on(foo.bar("the answer".to_string(), 42)) {
+    match foo.bar("the answer".to_string(), 42).await {
         Ok(result) => assert_eq!("the answer is 42", result),
         Err(e) => panic!("error: {:?}", e),
     }
-}
-
-async fn json_transact(data: Vec<u8>) -> Result<Vec<u8>, RPCError> {
-		let mut response = Vec::new();
-    let transport = JSONTransport::new(ReadWrite::new(data.deref(), &mut response));
-    let mut serve = FooRPCServer::new(FooImpl::new(), transport);
-    serve.serve_single_call()?;
-    Ok(response)
 }
 
 fn json_foo() -> impl FooAsync {
-    FooAsyncRPCClient::new(JSONAsyncClientTransport::new(json_transact))
-}
-
-async fn bincode_transact(data: Vec<u8>) -> Result<Vec<u8>, RPCError> {
-		let mut response = Vec::new();
-    let transport = BincodeTransport::new(ReadWrite::new(data.deref(), &mut response));
-    let mut serve = FooRPCServer::new(FooImpl::new(), transport);
-    serve.serve_single_call()?;
-    Ok(response)
+    let (s1, s2) = tokio::net::UnixStream::pair().unwrap();
+    // The server isn't actually async, so convert into a non-asyn Unix stream
+    let s2 = s2.into_std().unwrap();
+    s2.set_nonblocking(false).unwrap();
+    thread::spawn(move || {
+        let mut serve = FooRPCServer::new(FooImpl::new(), JSONTransport::new(s2));
+        serve.serve_single_call()
+    });
+    FooAsyncRPCClient::new(JSONAsyncClientTransport::new(s1.compat()))
 }
 
 fn bincode_foo() -> impl FooAsync {
-    FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(bincode_transact))
+    let (s1, s2) = tokio::net::UnixStream::pair().unwrap();
+    // The server isn't actually async, so convert into a non-asyn Unix stream
+    let s2 = s2.into_std().unwrap();
+    s2.set_nonblocking(false).unwrap();
+    thread::spawn(move || {
+        let mut serve = FooRPCServer::new(FooImpl::new(), BincodeTransport::new(s2));
+        serve.serve_single_call()
+    });
+    FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(s1.compat()))
 }

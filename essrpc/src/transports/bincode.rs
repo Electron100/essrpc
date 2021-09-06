@@ -1,7 +1,7 @@
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::io;
 use std::io::{Read, Write};
-
-use serde::{Deserialize, Serialize};
 
 use crate::{
     ClientTransport, MethodId, PartialMethodId, RPCError, RPCErrorKind, Result, ServerTransport,
@@ -133,70 +133,65 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
 #[cfg(feature = "async_client")]
 mod async_client {
     use super::*;
-    use crate::{AsyncClientTransport, BoxFuture};
-    use futures::TryFutureExt;
-    use futures::{Future, FutureExt};
-    use std::ops::Deref;
+    use crate::AsyncClientTransport;
+    use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-    type FutureBytes = BoxFuture<Vec<u8>, RPCError>;
-
-    /// Like BincodeTransport except for use as AsyncClientTransport.
-    pub struct BincodeAsyncClientTransport<F, FT>
-    where
-        F: Fn(Vec<u8>) -> FT,
-        FT: Future<Output = Result<Vec<u8>>>,
-    {
-        transact: F,
+    /// Like BincodeTransport except for use as
+    /// AsyncClientTransport.Can be used over any `AsyncRead+AsyncWrite+Send` channel
+    /// (local socket, internet socket, pipe, etc).
+    pub struct BincodeAsyncClientTransport<C: AsyncRead + AsyncWrite + Send> {
+        channel: C,
     }
 
-    impl<F, FT> BincodeAsyncClientTransport<F, FT>
-    where
-        F: Fn(Vec<u8>) -> FT,
-        FT: Future<Output = Result<Vec<u8>>>,
-    {
-        /// Create an AsyncBincodeTransport. `transact` must be a
-        /// function which given the raw bytes to transmit to the server,
-        /// returns a future representing the raw bytes returned from the server.
-        pub fn new(transact: F) -> Self {
-            BincodeAsyncClientTransport { transact }
+    impl<C: AsyncRead + AsyncWrite + Send> BincodeAsyncClientTransport<C> {
+        /// Create an AsyncBincodeTransport.
+        pub fn new(channel: C) -> Self {
+            BincodeAsyncClientTransport { channel }
         }
     }
 
-    impl<F, FT> AsyncClientTransport for BincodeAsyncClientTransport<F, FT>
-    where
-        F: Fn(Vec<u8>) -> FT,
-        FT: Future<Output = Result<Vec<u8>>> + 'static,
+    #[async_trait]
+    impl<C: AsyncRead + AsyncWrite + Send + Unpin> AsyncClientTransport
+        for BincodeAsyncClientTransport<C>
     {
         type TXState = Vec<u8>;
-        type FinalState = FutureBytes;
+        type FinalState = ();
 
-        fn tx_begin_call(&mut self, method: MethodId) -> Result<Vec<u8>> {
+        async fn tx_begin_call(&mut self, method: MethodId) -> Result<Vec<u8>> {
             let mut state = Vec::new();
             serialize(&mut state, method.num)?;
             Ok(state)
         }
 
-        fn tx_add_param(
+        async fn tx_add_param(
             &mut self,
             _name: &'static str,
-            value: impl Serialize,
+            value: impl Serialize + Send + 'async_trait,
             state: &mut Vec<u8>,
         ) -> Result<()> {
             serialize(state, value)
         }
 
-        fn tx_finalize(&mut self, state: Vec<u8>) -> Result<FutureBytes> {
-            Ok((self.transact)(state).boxed_local())
+        async fn tx_finalize(&mut self, state: Vec<u8>) -> Result<()> {
+            self.channel.write(&state).await?;
+            self.channel.flush().await?;
+            Ok(())
         }
 
-        fn rx_response<T>(&mut self, state: FutureBytes) -> BoxFuture<T, RPCError>
+        async fn rx_response<T>(&mut self, _state: ()) -> Result<T>
         where
             for<'de> T: Deserialize<'de>,
-            T: 'static,
         {
-            state
-                .and_then(|data| async move { deserialize(data.deref()) })
-                .boxed_local()
+            // Note, there are a couple limitations here that we should potentially address in the future
+            // 1. Arbitrary limit on return type size
+            // 2. For stream-based channels such as TCP, if the return
+            //    type size is greater than the TCP segment size, we
+            //    will likely splice the data and the deserialize
+            //    would fail. We need to add our own frame concept on top of the channel.
+            //    or switch to using Source/Sink instead of Read/Write
+            let mut buffer = [0u8; 1024];
+            self.channel.read(&mut buffer).await?;
+            deserialize(&buffer as &[u8])
         }
     }
 }

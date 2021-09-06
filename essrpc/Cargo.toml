@@ -13,7 +13,7 @@ documentation = "https://docs.rs/essrpc/"
 [features]
 bincode_transport = ["bincode"]
 json_transport = ["serde_json", "uuid"]
-async_client = ["futures", "async-trait", "atomic_refcell"]
+async_client = ["futures", "async-trait"]
 wasm_bindgen = ["uuid/wasm-bindgen"]
 
 [dependencies]

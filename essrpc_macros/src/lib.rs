@@ -167,7 +167,7 @@ fn client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream2 {
 
     let ident_literal = make_ident_literal_str(ident);
     quote!(
-        let mut tr = self.tr.borrow_mut();
+        let mut tr = self.tr.lock();
         let mut state = tr.tx_begin_call(essrpc::MethodId{name: #ident_literal, num: #id})?;
         #add_param_tokens
         let state = tr.tx_finalize(state)?;
@@ -184,17 +184,17 @@ fn async_client_method_tx_send(method: &TraitItemMethod, id: u32) -> TokenStream
         if let FnArg::Typed(arg) = p {
             let name = &arg.pat;
             let name_literal = make_pat_literal_str(name);
-            add_param_tokens.extend(
-                quote!(self.tr.borrow_mut().tx_add_param(#name_literal, #name, &mut state).await?;),
-            );
+            add_param_tokens
+                .extend(quote!(tr.tx_add_param(#name_literal, #name, &mut state).await?;));
         }
     }
 
     let ident_literal = make_ident_literal_str(ident);
     quote!(
-        let mut state = self.tr.borrow_mut().tx_begin_call(essrpc::MethodId{name: #ident_literal, num: #id}).await?;
+        let mut tr = self.tr.lock().await;
+        let mut state = tr.tx_begin_call(essrpc::MethodId{name: #ident_literal, num: #id}).await?;
         #add_param_tokens
-        let state = self.tr.borrow_mut().tx_finalize(state).await?;
+        let state = tr.tx_finalize(state).await?;
     )
 }
 
@@ -250,9 +250,9 @@ fn impl_async_client_method(method: &TraitItemMethod, id: u32) -> TokenStream2 {
     let tx_send = async_client_method_tx_send(method, id);
 
     quote!(
-    async fn #ident<'a>(&'a self, #param_tokens) -> #rettype {
+    async fn #ident(&self, #param_tokens) -> #rettype {
         #tx_send
-        let ret = self.tr.borrow_mut().rx_response(state).await?;
+        let ret = tr.rx_response(state).await?;
         ret
     })
 }
@@ -266,12 +266,12 @@ fn create_async_client_trait(trait_ident: &Ident, methods: &[TraitItemMethod]) -
         let ident = &method.sig.ident;
         let param_tokens = param_tokens_after_this(method);
         method_decls.push(quote!(
-        async fn #ident<'a>(&'a self, #param_tokens) -> #rettype;
+        async fn #ident(&self, #param_tokens) -> #rettype;
             ));
     }
 
     quote!(
-        #[essrpc::internal::rpc_async_trait(?Send)]
+        #[essrpc::internal::rpc_async_trait]
         pub trait #ident {
            #(#method_decls)*
         }
@@ -299,15 +299,22 @@ fn create_client(
         mcnt += 1;
     }
 
-    let impl_attrs = if async_client {
-        Some(quote!(#[essrpc::internal::rpc_async_trait(?Send)]))
+    let impl_attrs: Option<TokenStream2>;
+    // Since our traits generally take &self, but there's no
+    // expectation that our transport is Sync, we do need to use a
+    // mutex to synchronize the actual RPC calls.
+    let mutex_type: TokenStream2;
+    if async_client {
+        impl_attrs = Some(quote!(#[essrpc::internal::rpc_async_trait]));
+        mutex_type = quote!(essrpc::internal::AsyncMutex);
     } else {
-        None
+        impl_attrs = None;
+        mutex_type = quote!(essrpc::internal::SyncMutex);
     };
 
     quote!(
         pub struct #client_ident<TR: essrpc::#transport_ident> {
-            tr: std::cell::RefCell<TR>,
+            tr: #mutex_type<TR>
         }
 
         impl <TR> essrpc::#rpcclient_ident for #client_ident<TR> where
@@ -316,7 +323,8 @@ fn create_client(
             type TR = TR;
 
             fn new(transport: TR) -> Self {
-                #client_ident{tr: std::cell::RefCell::new(transport)}
+                //#client_ident{tr: std::sync::Arc::new(essrpc::internal::AtomicRefCell::new(transport))}
+                #client_ident{tr: #mutex_type::new(transport)}
             }
         }
 

@@ -160,14 +160,14 @@ pub trait ClientTransport {
 #[cfg(feature = "async_client")]
 #[async_trait]
 /// Trait for RPC transport (client) to be used with asynchronous clients
-pub trait AsyncClientTransport {
+pub trait AsyncClientTransport: Send {
     /// Type of transport-internal state used when bulding a call for
     /// transmission on the client. May be unit if the transport does not need to track
     /// state or does so through member variables.
-    type TXState;
+    type TXState: Send;
 
     /// Type of state object returned from tx_finalize and consumed by rx_response. May be unit.
-    type FinalState;
+    type FinalState: Send;
 
     /// Begin calling the given method. The transport may begin transmitting over the wire,
     /// or it may may wait until the call to `tx_finalize`.
@@ -415,4 +415,9 @@ pub type BoxFuture<T, E> = Pin<Box<dyn Future<Output = std::result::Result<T, E>
 pub mod internal {
     #[cfg(feature = "async_client")]
     pub use async_trait::async_trait as rpc_async_trait;
+
+    #[cfg(feature = "async_client")]
+    pub use futures::lock::Mutex as AsyncMutex;
+
+    pub use parking_lot::Mutex as SyncMutex;
 }

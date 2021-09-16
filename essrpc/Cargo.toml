@@ -27,8 +27,9 @@ serde_json = { version="1.0", optional=true }
 uuid = { version = "0.7", features = ["v4"], optional=true }
 
 [dev-dependencies]
-tokio = { version = "1.11", features = ["rt", "macros", "net"] }
+tokio = { version = "1.11", features = ["full"] }
 tokio-util = { version = "0.6", features = ["compat"] }
+readwrite = { version = "0.2.0", features = ["asyncstd"] }
 
 [package.metadata.docs.rs]
 all-features = true

@@ -33,6 +33,7 @@ impl From<essrpc::RPCError> for TestError {
 pub trait Foo {
     fn bar(&self, a: String, b: i32) -> Result<String, TestError>;
     fn expect_error(&self) -> Result<String, TestError>;
+    fn big_buffer(&self) -> Result<Vec<u8>, TestError>;
 }
 
 struct FooImpl;
@@ -43,6 +44,8 @@ impl FooImpl {
     }
 }
 
+const BIG_BUFFER_SIZE: usize = 2048;
+
 impl Foo for FooImpl {
     fn bar(&self, a: String, b: i32) -> Result<String, TestError> {
         Ok(format!("{} is {}", a, b))
@@ -51,6 +54,11 @@ impl Foo for FooImpl {
         Err(TestError {
             msg: "iamerror".to_string(),
         })
+    }
+    fn big_buffer(&self) -> Result<Vec<u8>, TestError> {
+        let mut a: Vec<u8> = Vec::new();
+        a.resize(BIG_BUFFER_SIZE, 0);
+        Ok(a)
     }
 }
 
@@ -70,6 +78,13 @@ async fn basic_bincode_async() {
         Ok(result) => assert_eq!("the answer is 42", result),
         Err(e) => panic!("error: {:?}", e),
     }
+}
+
+#[tokio::test]
+async fn big_buffer_async() {
+    let foo = bincode_foo();
+    let buf = foo.big_buffer().await.unwrap();
+    assert_eq!(buf.len(), BIG_BUFFER_SIZE);
 }
 
 fn json_foo() -> impl FooAsync {

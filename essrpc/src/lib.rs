@@ -383,6 +383,17 @@ impl std::error::Error for RPCError {}
 
 impl From<std::io::Error> for RPCError {
     fn from(e: std::io::Error) -> RPCError {
+        match e.kind() {
+            std::io::ErrorKind::UnexpectedEof => {
+                RPCError::with_cause(RPCErrorKind::TransportEOF, "IO error in transport", e)
+            }
+            _ => RPCError::with_cause(RPCErrorKind::TransportError, "IO error in transport", e),
+        }
+    }
+}
+
+impl From<std::array::TryFromSliceError> for RPCError {
+    fn from(e: std::array::TryFromSliceError) -> RPCError {
         RPCError::with_cause(RPCErrorKind::TransportError, "IO error in transport", e)
     }
 }

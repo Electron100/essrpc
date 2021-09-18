@@ -119,10 +119,8 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
     type RXState = ();
 
     fn rx_begin_call(&mut self) -> Result<(PartialMethodId, ())> {
-        eprintln!("rx begin call");
         let mut header = [0u8; FrameHeader::HEADER_LEN];
         self.channel.read_exact(&mut header)?;
-        eprintln!("rx read exact");
         FrameHeader::from_bytes(header)?;
         // todo check header
         let method_id: u32 = self.deserialize()?;
@@ -237,11 +235,6 @@ mod async_client {
             self.channel.read_exact(&mut header).await?;
             let mut buffer = Vec::new();
             buffer.resize(FrameHeader::from_bytes(header)?.len(), 0);
-            eprintln!(
-                "Initialized buffer with size {} or {}",
-                buffer.len(),
-                buffer.as_mut_slice().len()
-            );
             self.channel.read_exact(buffer.as_mut_slice()).await?;
             deserialize(buffer.as_slice())
         }

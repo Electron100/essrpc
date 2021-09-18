@@ -34,6 +34,7 @@ pub trait Foo {
     fn bar(&self, a: String, b: i32) -> Result<String, TestError>;
     fn expect_error(&self) -> Result<String, TestError>;
     fn big_buffer(&self) -> Result<Vec<u8>, TestError>;
+    fn big_argument(&self, v: Vec<u8>) -> Result<(), TestError>;
 }
 
 struct FooImpl;
@@ -44,7 +45,7 @@ impl FooImpl {
     }
 }
 
-const BIG_BUFFER_SIZE: usize = 2048;
+const BIG_BUFFER_SIZE: usize = 8*1024;
 
 impl Foo for FooImpl {
     fn bar(&self, a: String, b: i32) -> Result<String, TestError> {
@@ -59,6 +60,9 @@ impl Foo for FooImpl {
         let mut a: Vec<u8> = Vec::new();
         a.resize(BIG_BUFFER_SIZE, 0);
         Ok(a)
+    }
+    fn big_argument(&self, _v: Vec<u8>) -> Result<(), TestError> {
+        Ok(())
     }
 }
 
@@ -86,6 +90,16 @@ async fn big_buffer_async() {
     let buf = foo.big_buffer().await.unwrap();
     assert_eq!(buf.len(), BIG_BUFFER_SIZE);
 }
+
+#[tokio::test]
+async fn big_buffer_argument() {
+    let foo = bincode_foo();
+    let mut v = Vec::new();
+    v.resize(BIG_BUFFER_SIZE, 0);
+    let res = foo.big_argument(v).await;
+    assert!(res.is_ok());
+}
+
 
 fn json_foo() -> impl FooAsync {
     let (s1, s2) = tokio::net::UnixStream::pair().unwrap();

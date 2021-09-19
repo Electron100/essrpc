@@ -45,7 +45,7 @@ impl FooImpl {
     }
 }
 
-const BIG_BUFFER_SIZE: usize = 8*1024;
+const BIG_BUFFER_SIZE: usize = 256 * 1024;
 
 impl Foo for FooImpl {
     fn bar(&self, a: String, b: i32) -> Result<String, TestError> {
@@ -99,7 +99,6 @@ async fn big_buffer_argument() {
     let res = foo.big_argument(v).await;
     assert!(res.is_ok());
 }
-
 
 fn json_foo() -> impl FooAsync {
     let (s1, s2) = tokio::net::UnixStream::pair().unwrap();

@@ -58,13 +58,6 @@ impl<C: Read + Write> BincodeTransport<C> {
         &self.channel
     }
 
-    fn deserialize<T>(&mut self) -> Result<T>
-    where
-        for<'de> T: Deserialize<'de>,
-    {
-        deserialize(Read::by_ref(&mut self.channel))
-    }
-
     fn flush(&mut self) -> Result<()> {
         self.channel.flush().map_err(|e| {
             RPCError::with_cause(
@@ -115,23 +108,53 @@ impl<C: Read + Write> ClientTransport for BincodeTransport<C> {
         deserialize(buffer.as_slice())
     }
 }
-impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
-    type RXState = ();
 
-    fn rx_begin_call(&mut self) -> Result<(PartialMethodId, ())> {
+pub struct VecReader {
+    v: Vec<u8>,
+    pos: usize,
+}
+impl VecReader {
+    fn new(v: Vec<u8>) -> Self {
+        VecReader { v, pos: 0 }
+    }
+}
+impl std::io::Read for VecReader {
+    fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
+        let wanted = buf.len();
+        let avail = self.v.len() - self.pos;
+        if avail == 0 {
+            return Ok(0);
+        }
+        let written = match buf.write(&self.v.as_slice()[self.pos..])? {
+            0 => wanted,
+            n => n,
+        };
+        self.pos += written;
+        Ok(written)
+    }
+}
+
+impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
+    type RXState = VecReader;
+
+    fn rx_begin_call(&mut self) -> Result<(PartialMethodId, Self::RXState)> {
         let mut header = [0u8; FrameHeader::HEADER_LEN];
         self.channel.read_exact(&mut header)?;
-        FrameHeader::from_bytes(header)?;
-        // todo check header
-        let method_id: u32 = self.deserialize()?;
-        Ok((PartialMethodId::Num(method_id), ()))
+        let mut buffer = Vec::new();
+        let header = FrameHeader::from_bytes(header)?;
+        eprintln!("rx call has {} bytes", header.len());
+        buffer.resize(header.len(), 0);
+        self.channel.read_exact(buffer.as_mut_slice())?;
+        let mut reader = VecReader::new(buffer);
+        let method_id: u32 = deserialize(&mut reader)?;
+        Ok((PartialMethodId::Num(method_id), reader))
     }
 
-    fn rx_read_param<T>(&mut self, _name: &'static str, _state: &mut ()) -> Result<T>
+    fn rx_read_param<T>(&mut self, _name: &'static str, state: &mut Self::RXState) -> Result<T>
     where
         for<'de> T: serde::Deserialize<'de>,
     {
-        self.deserialize()
+        deserialize(state)
     }
 
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {
@@ -221,8 +244,9 @@ mod async_client {
 
         async fn tx_finalize(&mut self, state: Vec<u8>) -> Result<()> {
             let header = FrameHeader::new(state.len());
+            eprintln!("tx call has {} bytes", header.len());
             self.channel.write(&header.as_bytes()).await?;
-            self.channel.write(&state).await?;
+            self.channel.write_all(&state).await?;
             self.channel.flush().await?;
             Ok(())
         }

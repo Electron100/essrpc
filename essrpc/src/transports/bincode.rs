@@ -142,7 +142,6 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
         self.channel.read_exact(&mut header)?;
         let mut buffer = Vec::new();
         let header = FrameHeader::from_bytes(header)?;
-        eprintln!("rx call has {} bytes", header.len());
         buffer.resize(header.len(), 0);
         self.channel.read_exact(buffer.as_mut_slice())?;
         let mut reader = VecReader::new(buffer);
@@ -244,7 +243,6 @@ mod async_client {
 
         async fn tx_finalize(&mut self, state: Vec<u8>) -> Result<()> {
             let header = FrameHeader::new(state.len());
-            eprintln!("tx call has {} bytes", header.len());
             self.channel.write(&header.as_bytes()).await?;
             self.channel.write_all(&state).await?;
             self.channel.flush().await?;

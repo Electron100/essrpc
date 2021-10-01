@@ -124,7 +124,6 @@ where
     let read = serde_json::de::IoRead::new(reader);
     let mut de = serde_json::de::Deserializer::new(read);
     serde::de::Deserialize::deserialize(&mut de).map_err(|e| {
-        println!("classification {:?}", e.classify());
         if e.classify() == serde_json::error::Category::Eof {
             RPCError::new(
                 RPCErrorKind::TransportEOF,
@@ -195,23 +194,46 @@ impl<C: Read + Write> ServerTransport for JSONTransport<C> {
 mod async_client {
     use super::*;
     use crate::AsyncClientTransport;
-    use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+    use bytes::{BufMut, Bytes, BytesMut};
+    use futures::{Sink, SinkExt, Stream, StreamExt};
+    use std::io::Result as IoResult;
+    use tokio::io::{AsyncRead, AsyncWrite};
+    use tokio_util::codec::Framed;
 
     /// Like JSONTransport except for use as AsyncClientTransport.
-    pub struct JSONAsyncClientTransport<C: AsyncRead + AsyncWrite> {
+    pub struct JSONAsyncClientTransport<C>
+    where
+        C: Sink<Bytes>,
+        C: Stream,
+    {
         channel: C,
     }
 
-    impl<C: AsyncRead + AsyncWrite> JSONAsyncClientTransport<C> {
+    impl<C: Sink<Bytes> + Stream> JSONAsyncClientTransport<C> {
         /// Create an AsyncJSONTransport.
         pub fn new(channel: C) -> Self {
             JSONAsyncClientTransport { channel }
         }
     }
 
+    impl<A> JSONAsyncClientTransport<Framed<A, JSONCodec>>
+    where
+        A: AsyncRead + AsyncWrite,
+    {
+        pub fn new_unframed(channel: A) -> Self
+        where
+            A: AsyncRead + AsyncWrite,
+        {
+            Self::new(Framed::new(channel, JSONCodec::new()))
+        }
+    }
+
     #[async_trait]
-    impl<C: AsyncRead + AsyncWrite + Send + Unpin> AsyncClientTransport
-        for JSONAsyncClientTransport<C>
+    impl<C> AsyncClientTransport for JSONAsyncClientTransport<C>
+    where
+        C: Sink<Bytes, Error = std::io::Error>,
+        C: Stream<Item = std::result::Result<BytesMut, std::io::Error>>,
+        C: Send + Unpin,
     {
         type TXState = JTXState;
         type FinalState = ();
@@ -231,7 +253,7 @@ mod async_client {
 
         async fn tx_finalize(&mut self, state: JTXState) -> Result<()> {
             let j = serde_json::to_vec(&value_for_state(&state)).map_err(convert_error)?;
-            self.channel.write(&j).await?;
+            self.channel.send(j.into()).await?;
             self.channel.flush().await?;
             Ok(())
         }
@@ -240,11 +262,48 @@ mod async_client {
         where
             for<'de> T: Deserialize<'de>,
         {
-            println!("rx response");
-            // TODO address limitations
-            let mut data = [0u8; 1024];
-            self.channel.read(&mut data).await?;
-            read_value_from_json(&data as &[u8])
+            let msg: BytesMut = self.channel.next().await.unwrap_or_else(|| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Could not rx response, unexpcted EOF",
+                ))
+            })?;
+            read_value_from_json(&*msg)
+        }
+    }
+
+    /// Codec which maps bytes to bytes but only decodes valid
+    /// json. Cannot handle a true stream of json objects one after
+    /// another with no delimeters, but essrpc always has an messages
+    /// from each side.
+    pub struct JSONCodec {}
+    impl JSONCodec {
+        fn new() -> Self {
+            JSONCodec {}
+        }
+    }
+    impl tokio_util::codec::Encoder<Bytes> for JSONCodec {
+        type Error = std::io::Error;
+        fn encode(&mut self, item: Bytes, dst: &mut BytesMut) -> IoResult<()> {
+            dst.put(item);
+            Ok(())
+        }
+    }
+    impl tokio_util::codec::Decoder for JSONCodec {
+        type Item = BytesMut;
+        type Error = std::io::Error;
+        fn decode(&mut self, src: &mut BytesMut) -> IoResult<Option<Self::Item>> {
+            let s = match std::str::from_utf8(src) {
+                Ok(s) => s,
+                Err(_) => return Ok(None), // we might have spliced a sequence, so not a fatal error
+            };
+            match json::parse(s) {
+                // Ok, we're done. Remove the bytes from the buffer, return them
+                Ok(_) => Ok(Some(src.split())),
+                // Unexpected end of json just means we haven't read enough bytes yet
+                Err(json::Error::UnexpectedEndOfJson) => Ok(None),
+                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+            }
         }
     }
 }

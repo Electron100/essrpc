@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 use std::io;
 use std::io::{Read, Write};
+use tokio_util::codec::LengthDelimitedCodec;
 
 use crate::{
     ClientTransport, MethodId, PartialMethodId, RPCError, RPCErrorKind, Result, ServerTransport,
@@ -37,6 +37,17 @@ where
             e,
         )
     })
+}
+
+fn read_msg_len(mut r: impl Read) -> Result<usize> {
+    let mut msg_len_bytes = [0u8; 4];
+    r.read_exact(&mut msg_len_bytes)?;
+    Ok(u32::from_le_bytes(msg_len_bytes) as usize)
+}
+
+fn write_msg_len(mut w: impl Write, len: usize) -> Result<()> {
+    w.write_all(&(len as u32).to_le_bytes())?;
+    Ok(())
 }
 
 /// Transport implementation using Bincode serialization. Can be used
@@ -89,8 +100,7 @@ impl<C: Read + Write> ClientTransport for BincodeTransport<C> {
     }
 
     fn tx_finalize(&mut self, state: Vec<u8>) -> Result<()> {
-        let header = FrameHeader::new(state.len());
-        self.channel.write_all(&header.as_bytes())?;
+        write_msg_len(&mut self.channel, state.len())?;
         self.channel.write_all(&state)?;
         self.flush()?;
         Ok(())
@@ -100,10 +110,9 @@ impl<C: Read + Write> ClientTransport for BincodeTransport<C> {
     where
         for<'de> T: Deserialize<'de>,
     {
-        let mut header = [0u8; FrameHeader::HEADER_LEN];
-        self.channel.read_exact(&mut header)?;
+        let msg_len = read_msg_len(&mut self.channel)?;
         let mut buffer = Vec::new();
-        buffer.resize(FrameHeader::from_bytes(header)?.len(), 0);
+        buffer.resize(msg_len, 0);
         self.channel.read_exact(buffer.as_mut_slice())?;
         deserialize(buffer.as_slice())
     }
@@ -138,11 +147,9 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
     type RXState = VecReader;
 
     fn rx_begin_call(&mut self) -> Result<(PartialMethodId, Self::RXState)> {
-        let mut header = [0u8; FrameHeader::HEADER_LEN];
-        self.channel.read_exact(&mut header)?;
+        let msg_len = read_msg_len(&mut self.channel)?;
         let mut buffer = Vec::new();
-        let header = FrameHeader::from_bytes(header)?;
-        buffer.resize(header.len(), 0);
+        buffer.resize(msg_len, 0);
         self.channel.read_exact(buffer.as_mut_slice())?;
         let mut reader = VecReader::new(buffer);
         let method_id: u32 = deserialize(&mut reader)?;
@@ -159,43 +166,10 @@ impl<C: Read + Write> ServerTransport for BincodeTransport<C> {
     fn tx_response(&mut self, value: impl Serialize) -> Result<()> {
         let mut msg: Vec<u8> = Vec::new();
         serialize(&mut msg, value)?;
-        let header = FrameHeader::new(msg.len());
-        self.channel.write_all(&header.as_bytes())?;
+        write_msg_len(&mut self.channel, msg.len())?;
         self.channel.write_all(&msg)?;
         self.flush()?;
         Ok(())
-    }
-}
-
-struct FrameHeader {
-    msg_len: u32,
-}
-impl FrameHeader {
-    const HEADER_LEN: usize = 10;
-    fn new(len: usize) -> Self {
-        FrameHeader {
-            msg_len: (len as u32),
-        }
-    }
-    fn as_bytes(&self) -> [u8; Self::HEADER_LEN] {
-        let mut frame_header = [0u8; Self::HEADER_LEN];
-        frame_header[..6].copy_from_slice(b"ESSRPC");
-        frame_header[6..].copy_from_slice(&(self.msg_len.to_le_bytes()));
-        frame_header
-    }
-    fn from_bytes(bytes: [u8; Self::HEADER_LEN]) -> Result<Self> {
-        // todo validate initial bytes
-        if bytes[0..6] != *b"ESSRPC" {
-            return Err(RPCError::new(
-                RPCErrorKind::TransportError,
-                "IO error in transport",
-            ));
-        }
-        let len = u32::from_le_bytes(bytes[6..10].try_into()?);
-        Ok(Self::new(len as usize))
-    }
-    fn len(&self) -> usize {
-        self.msg_len as usize
     }
 }
 
@@ -203,19 +177,26 @@ impl FrameHeader {
 mod async_client {
     use super::*;
     use crate::AsyncClientTransport;
-    use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+    use futures::{SinkExt, StreamExt};
+    use tokio::io::{AsyncRead, AsyncWrite};
+    use tokio_util::codec::Framed;
 
     /// Like BincodeTransport except for use as
     /// AsyncClientTransport.Can be used over any `AsyncRead+AsyncWrite+Send` channel
     /// (local socket, internet socket, pipe, etc).
     pub struct BincodeAsyncClientTransport<C: AsyncRead + AsyncWrite + Send> {
-        channel: C,
+        channel: Framed<C, LengthDelimitedCodec>,
     }
 
     impl<C: AsyncRead + AsyncWrite + Send> BincodeAsyncClientTransport<C> {
         /// Create an AsyncBincodeTransport.
         pub fn new(channel: C) -> Self {
-            BincodeAsyncClientTransport { channel }
+            BincodeAsyncClientTransport {
+                channel: Framed::new(
+                    channel,
+                    LengthDelimitedCodec::builder().little_endian().new_codec(),
+                ),
+            }
         }
     }
 
@@ -226,7 +207,7 @@ mod async_client {
         type TXState = Vec<u8>;
         type FinalState = ();
 
-        async fn tx_begin_call(&mut self, method: MethodId) -> Result<Vec<u8>> {
+        async fn tx_begin_call(&mut self, method: MethodId) -> Result<Self::TXState> {
             let mut state = Vec::new();
             serialize(&mut state, method.num)?;
             Ok(state)
@@ -236,16 +217,13 @@ mod async_client {
             &mut self,
             _name: &'static str,
             value: impl Serialize + Send + 'async_trait,
-            state: &mut Vec<u8>,
+            state: &mut Self::TXState,
         ) -> Result<()> {
             serialize(state, value)
         }
 
-        async fn tx_finalize(&mut self, state: Vec<u8>) -> Result<()> {
-            let header = FrameHeader::new(state.len());
-            self.channel.write(&header.as_bytes()).await?;
-            self.channel.write_all(&state).await?;
-            self.channel.flush().await?;
+        async fn tx_finalize(&mut self, state: Self::TXState) -> Result<()> {
+            self.channel.send(state.into()).await?;
             Ok(())
         }
 
@@ -253,12 +231,13 @@ mod async_client {
         where
             for<'de> T: Deserialize<'de>,
         {
-            let mut header = [0u8; FrameHeader::HEADER_LEN];
-            self.channel.read_exact(&mut header).await?;
-            let mut buffer = Vec::new();
-            buffer.resize(FrameHeader::from_bytes(header)?.len(), 0);
-            self.channel.read_exact(buffer.as_mut_slice()).await?;
-            deserialize(buffer.as_slice())
+            let msg = self.channel.next().await.unwrap_or_else(|| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Could not rx response, unexpcted EOF",
+                ))
+            })?;
+            deserialize(&*msg)
         }
     }
 }

@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::result::Result;
 use std::{fmt, thread};
 use tokio;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TestError {
@@ -109,7 +108,7 @@ fn json_foo() -> impl FooAsync {
         let mut serve = FooRPCServer::new(FooImpl::new(), JSONTransport::new(s2));
         serve.serve_single_call()
     });
-    FooAsyncRPCClient::new(JSONAsyncClientTransport::new(s1.compat()))
+    FooAsyncRPCClient::new(JSONAsyncClientTransport::new_unframed(s1))
 }
 
 fn bincode_foo() -> impl FooAsync {
@@ -121,5 +120,5 @@ fn bincode_foo() -> impl FooAsync {
         let mut serve = FooRPCServer::new(FooImpl::new(), BincodeTransport::new(s2));
         serve.serve_single_call()
     });
-    FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(s1.compat()))
+    FooAsyncRPCClient::new(BincodeAsyncClientTransport::new(s1))
 }

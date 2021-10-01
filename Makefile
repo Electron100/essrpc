@@ -11,7 +11,7 @@ clean :
 doc :
 	cargo doc --all-features
 
-check :
+check : build
 	cargo clippy --all-features -- -D warnings
 	cargo test  --all-features
 

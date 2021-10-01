@@ -1,3 +1,6 @@
+## 0.4
+  * Restructure async clients to match more modern paradigms. New
+    dependence on Tokio (when the `async` feature is enabled).
 ## 0.3.1
   * Bincode and JSON transports flush the underlying channel when transmitting
 ## 0.3

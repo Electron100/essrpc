@@ -194,7 +194,10 @@ mod async_client {
             BincodeAsyncClientTransport {
                 channel: Framed::new(
                     channel,
-                    LengthDelimitedCodec::builder().little_endian().new_codec(),
+                    LengthDelimitedCodec::builder()
+                        .little_endian()
+                        .max_frame_length(usize::MAX)
+                        .new_codec(),
                 ),
             }
         }

@@ -1,3 +1,5 @@
+## 0.4.1
+  * Remove artificial frame size limit for Bincode transport.
 ## 0.4
   * Restructure async clients to match more modern paradigms. New
     dependence on Tokio (when the `async` feature is enabled).
